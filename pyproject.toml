@@ -13,8 +13,8 @@ dependencies = [
     "asyncio>=3.4.3",
     "mcp>=1.19.0",
     "python-dotenv>=1.1.0",
-    "uv>=0.9.5",
-    "certifi>=2025.10.5"
+    "uv>=0.8.9",
+    "certifi==2025.8.3",
 ]
 
 [build-system]

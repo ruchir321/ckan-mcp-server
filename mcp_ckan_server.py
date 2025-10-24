@@ -246,7 +246,6 @@ async def handle_list_tools() -> List[types.Tool]:
             description="Search records in a dataset",
             inputSchema={
                 "type": "object",
-                "required": ["limit"],
                 "properties": {
                     "resource_id": {
                         "type": "string",
