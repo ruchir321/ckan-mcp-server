@@ -412,6 +412,8 @@ Full documentation: https://docs.ckan.org/en/latest/api/
         return json.dumps(config, indent=2)
     else:
         raise Exception(f"Unknown resource: {uri}")
+    
+
 @click.command()
 @click.option("--host",default="127.0.0.1", help= "Hostname to listen on for SSE")
 @click.option("--port", default=8000, help="Port to listen on for SSE")
@@ -438,12 +440,12 @@ def main(host: str,port: int, transport: str,logpath:str,loglevel:str):
         logger.error("CKAN_URL environment variable not set")
         raise Exception("CKAN_URL environment variable is required")
     
-    ckan_api_key = os.getenv("CKAN_API_KEY")
-    ckan_basic_auth_username = os.getenv("CKAN_BASIC_AUTH_USERNAME")
-    ckan_basic_auth_password = os.getenv("CKAN_BASIC_AUTH_PASSWORD")
+    # ckan_api_key = os.getenv("CKAN_API_KEY")
+    # ckan_basic_auth_username = os.getenv("CKAN_BASIC_AUTH_USERNAME")
+    # ckan_basic_auth_password = os.getenv("CKAN_BASIC_AUTH_PASSWORD")
     
     global ckan_client
-    ckan_client = CKANAPIClient(ckan_url, ckan_api_key,ckan_basic_auth_username,ckan_basic_auth_password)
+    ckan_client = CKANAPIClient(ckan_url)
 
     # Start the CKAN client session
 
