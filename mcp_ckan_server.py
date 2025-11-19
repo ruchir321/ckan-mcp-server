@@ -7,7 +7,6 @@ import click
 import json
 import logging
 import os
-import pprint
 import ssl
 import certifi
 from typing import Any, Dict, List, Optional, Union
