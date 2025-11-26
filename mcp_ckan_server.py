@@ -280,6 +280,73 @@ async def ckan_datastore_search(
     finally:
         await client.__aexit__(None, None, None)
 
+# --- Data Analysis Tools ---
+
+@mcp.tool()
+async def ckan_resource_preview(resource_id: str, rows: int = 5) -> Dict[str, Any]:
+    """
+    Preview the content of a resource.
+    Tries to fetch data via DataStore first.
+    """
+    client = await get_client()
+    try:
+        # Try DataStore first
+        try:
+            return await client._make_request(
+                "POST", 
+                "datastore_search", 
+                data={"resource_id": resource_id, "limit": rows}
+            )
+        except Exception:
+            # Fallback to just showing resource metadata if DataStore is not active
+            # In a full implementation, we might try to download and parse CSVs here
+            return await client._make_request("GET", "resource_show", params={"id": resource_id})
+    finally:
+        await client.__aexit__(None, None, None)
+
+
+@mcp.tool()
+async def ckan_dataset_schema(id: str) -> Dict[str, Any]:
+    """
+    Get the schema/structure of a dataset.
+    Returns a summary of resources and their fields (if available in DataStore).
+    """
+    client = await get_client()
+    try:
+        # Get package details
+        package = await client._make_request("GET", "package_show", params={"id": id})
+        
+        schema_info = {
+            "dataset_title": package.get("title"),
+            "resources": []
+        }
+        
+        for resource in package.get("resources", []):
+            res_info = {
+                "name": resource.get("name"),
+                "format": resource.get("format"),
+                "id": resource.get("id"),
+                "fields": "Unknown (not in DataStore)"
+            }
+            
+            # Check if datastore is active for this resource
+            if resource.get("datastore_active"):
+                try:
+                    # Fetch one row to get field info
+                    ds_data = await client._make_request(
+                        "POST", 
+                        "datastore_search", 
+                        data={"resource_id": resource.get("id"), "limit": 0}
+                    )
+                    res_info["fields"] = ds_data.get("fields", [])
+                except Exception:
+                    pass
+            
+            schema_info["resources"].append(res_info)
+            
+        return schema_info
+    finally:
+        await client.__aexit__(None, None, None)
 
 # --- Resources ---
 
