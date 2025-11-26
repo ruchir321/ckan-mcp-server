@@ -116,7 +116,7 @@ Most IDEs allow you to configure MCP servers in a JSON file or settings UI. Use 
         "/absolute/path/to/ckan-mcp-server/mcp_ckan_server.py"
       ],
       "env": {
-        "CKAN_URL": "https://open.toronto.ca"
+        "CKAN_URL": "https://ckan0.cf.opendata.inter.prod-toronto.ca"
       }
     }
   }
