@@ -25,8 +25,7 @@ logger = logging.getLogger("mcp-ckan-server")
 # Initialize FastMCP server
 mcp = FastMCP("ckan-mcp-server")
 
-# Default CKAN URL to Toronto if not set
-CKAN_URL = os.getenv("CKAN_URL", "https://open.toronto.ca")
+CKAN_URL = os.getenv("CKAN_URL")
 
 
 class CKANAPIClient:

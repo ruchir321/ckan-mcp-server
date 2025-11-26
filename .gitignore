@@ -30,3 +30,6 @@ __pycache__
 uv.lock
 
 ckan_mcp_server.egg-info
+
+presentation/
+learning/
