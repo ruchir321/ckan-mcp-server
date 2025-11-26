@@ -1,10 +1,11 @@
 [project]
 name = "ckan-mcp-server"
-version = "0.0.1"
+version = "1.2.0"
 description = "A Model Context Protocol (MCP) server for the CKAN API that enables browsing and managing CKAN data portals through MCP-compatible clients."
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [
+    { name="Ruchir Attri", email="ruchir.attri99@gmail.com" },
     { name="Ondics GmbH", email="info@ondics.de" },
 ]
 license-files = ["LICENSE"]
