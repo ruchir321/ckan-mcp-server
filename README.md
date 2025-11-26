@@ -22,20 +22,29 @@ It is designed to be dropped into any MCP-compatible IDE or agent to instantly g
 
 ### Using uv (Recommended)
 
-This project uses `uv` for dependency management.
+This project uses `uv` for dependency management. `uv` will automatically create and manage a virtual environment for you.
 
 1.  Install `uv`:
     ```bash
     curl -LsSf https://astral.sh/uv/install.sh | sh
     ```
-2.  Sync dependencies:
+2.  Sync dependencies (this creates the `.venv` folder):
     ```bash
     uv sync
     ```
 
 ### Using pip
 
-1.  Install Python dependencies:
+If you prefer `pip`, you should manually create a virtual environment to avoid conflicts and to ensure the IDE integration works as expected.
+
+1.  Create a virtual environment:
+    ```bash
+    python -m venv .venv
+    ```
+2.  Activate the virtual environment:
+    -   **Linux/macOS**: `source .venv/bin/activate`
+    -   **Windows**: `.venv\Scripts\activate`
+3.  Install Python dependencies:
     ```bash
     pip install -r requirements.txt
     ```
@@ -106,17 +115,19 @@ Most IDEs allow you to configure MCP servers in a JSON file or settings UI. Use 
 
 ### Example: Claude Desktop / Generic Config
 
+Use the absolute path to the Python executable in your virtual environment to ensure all dependencies are found.
+
 ```json
 {
   "mcpServers": {
-    "ckan": {
-      "command": "uv",
+    "ckan-mcp-server": {
+      "command": "/absolute/path/to/ckan-mcp-server/.venv/bin/python",
       "args": [
-        "run",
         "/absolute/path/to/ckan-mcp-server/mcp_ckan_server.py"
       ],
       "env": {
-        "CKAN_URL": "https://ckan0.cf.opendata.inter.prod-toronto.ca"
+        "CKAN_URL": "https://ckan0.cf.opendata.inter.prod-toronto.ca",
+        "CKAN_API_KEY": "your-api-key-here"
       }
     }
   }
