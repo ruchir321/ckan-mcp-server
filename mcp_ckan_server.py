@@ -484,6 +484,8 @@ def main(host: str,port: int, transport: str,logpath:str,loglevel:str):
 
             async def arun():
                 async with stdio_server() as streams:
+                    if not ckan_client.session:
+                        await ckan_client.__aenter__()
                     await app.run(streams[0], streams[1],                 InitializationOptions(
                     server_name="ckan-mcp-server",
                     server_version="1.0.0",
@@ -496,7 +498,7 @@ def main(host: str,port: int, transport: str,logpath:str,loglevel:str):
             anyio.run(arun)
     finally:
         # Clean up CKAN client
-         ckan_client.__aexit__(None, None, None)
+         asyncio.run(ckan_client.__aexit__(None, None, None))
 
 if __name__ == "__main__":
     asyncio.run(main())
