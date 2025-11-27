@@ -355,7 +355,7 @@ def get_api_docs() -> str:
     return """
 CKAN API Documentation Summary
 
-Base URL: Configure via CKAN_URL environment variable (Default: https://open.toronto.ca)
+Base URL: Configure via CKAN_URL environment variable (Default: https://ckan0.cf.opendata.inter.prod-toronto.ca)
 API Version: 3
 
 Key Endpoints:
