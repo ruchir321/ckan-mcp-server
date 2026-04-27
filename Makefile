@@ -8,11 +8,11 @@
 # .SHELLFLAGS := -ec
 
 # Use env-File for PYPI_API_TOKEN
-include .env
+include backend/.env
 
-PROJECT := $(shell grep '^name = ' pyproject.toml | cut -d '"' -f2)
+PROJECT := $(shell grep '^name = ' backend/pyproject.toml | cut -d '"' -f2)
 PACKAGE := $(shell echo $(PROJECT) | tr '-' '_')
-VERSION := $(shell grep '^version = ' pyproject.toml | cut -d '"' -f2)
+VERSION := $(shell grep '^version = ' backend/pyproject.toml | cut -d '"' -f2)
 
 # help-systematik
 # build muss phony sein (forcierter build), weil es 
@@ -28,14 +28,14 @@ help:
 .DEFAULT_GOAL := help
 
 build: ## Build image with Publisher
-	docker compose build
+	cd backend && docker compose build
 
 bash: ## Start bash in container
-	docker compose run --rm pypipublisher bash
+	cd backend && docker compose run --rm pypipublisher bash
 
 publish-pypi: ## Publish to PyPi
 	${MAKE} build
-	docker compose run --rm pypipublisher bash -c "\
+	cd backend && docker compose run --rm pypipublisher bash -c "\
 		uv build && \
 		uv lock && \
 		uv publish --token ${PYPI_API_TOKEN} "
