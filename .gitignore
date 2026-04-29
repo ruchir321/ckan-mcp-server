@@ -31,5 +31,4 @@ uv.lock
 
 ckan_mcp_server.egg-info
 
-presentation/
-learning/
+docs/*
