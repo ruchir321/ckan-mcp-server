@@ -1,5 +1,12 @@
 # CHANGELOG
 
+2026-06-21 - unreleased
+
+* ENH: Grounded documentation tools `ckan_fetch_dataset_docs` and `ckan_search_dataset_docs` — crawl a dataset's external links (HTML + PDF, in-scope subpages) and retrieve cited passages (BM25) for hallucination-free legal/bylaw answers
+* ENH: Shared HTTP session with timeouts; trimmed `package_search`/`package_show` responses (`full=True` to opt out); clear `ToolError`s; `CKAN_URL` validation
+* FIX: Corrected `pyproject.toml` (cleaned dependencies, relaxed `requires-python` to 3.10, removed redundant `setup.py`)
+* TST: Offline mocked pytest suite (`aioresponses`)
+
 2025-11-26 - v1.2.0
 
 * ENH: Migrated to FastMCP for better performance and simplified codebase

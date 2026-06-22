@@ -148,6 +148,14 @@ The MCP server provides the following tools:
 -   `ckan_resource_preview`: Preview the content of a resource (first N rows)
 -   `ckan_datastore_search`: Search and query DataStore tables (SQL-like capabilities)
 
+### Grounded Documentation
+These read the authoritative documents linked from a dataset's metadata
+(`information_url` + links in `notes`), so the agent can answer legal/bylaw
+follow-ups from a cited source of truth instead of guessing.
+-   `ckan_fetch_dataset_docs`: Crawl a dataset's linked docs (HTML + PDF, in-scope subpages) and return them as Markdown with source URLs
+-   `ckan_search_dataset_docs`: Return the top-k passages from those docs matching a query, each with its source URL and heading (citable)
+-   `ckan_read_web_document`: Fetch a single arbitrary URL as clean Markdown
+
 ### Organizations & Groups
 -   `ckan_organization_list`: List all organizations
 -   `ckan_organization_show`: Show organization details
