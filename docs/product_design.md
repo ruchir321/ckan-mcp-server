@@ -35,7 +35,7 @@ graph TD
 
 ## 3. User Experience (UX) & Features
 
-### Phase 1: The Conversational Oracle (MVP)
+### The Conversational Oracle (MVP)
 *   **The Interface:** A clean, Google-like search bar that acts as a chat interface. 
 *   **Starter Prompts:** Users might not know what to ask. Provide clickable chips:
     *   *"How many noise complaints were in Downtown vs. North York last month?"*
@@ -45,11 +45,6 @@ graph TD
     *   **Text Summary:** The "TL;DR" (e.g., "Downtown had 40% more complaints").
     *   **Data Table:** A clean table showing the raw aggregates.
     *   **Dynamic Charts:** Bar charts, line graphs, or pie charts.
-
-### Phase 2: The "Pulse of the City" (Future Phase)
-*   **Curated Dashboards:** A homepage that tracks essential topics automatically (Budget, Housing, Safety).
-*   **Data Changelogs:** The feature you mentioned—tracking *changes* in data. 
-    *   *Implementation idea:* A scheduled background job that queries specific datasets weekly (using the MCP server), compares it to the previous week, and generates an automated news feed (e.g., "🚨 15 new fire hydrants were added to Toronto this week, mostly in Ward 10.").
 
 ## 4. How to build it? (Next Steps)
 
