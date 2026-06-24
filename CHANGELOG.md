@@ -2,6 +2,10 @@
 
 2026-06-21 - unreleased
 
+* ENH: Grounded civic-answer agent (`agent/`) — answers a plain-language question only from the City's source documents (verbatim quote + citation) or abstains; thin Anthropic-SDK loop reusing the existing retrieval, with optional Langfuse tracing
+* ENH: Langfuse eval harness (`evals/`) — versioned civic-question dataset + experiment runner with deterministic scores (retrieval hit, fact recall, citation match, refusal correctness, over-refusal) and LLM-as-judge scores
+* FIX: Packaging — include `document_scraper` in the built distribution (the server imports it; it was previously omitted from `py-modules`)
+* RMV: Delete `tests/test.py` (OpenAI Agents SDK scaffold) and the `openai-agents` dependency; the project is Anthropic-first
 * ENH: Lean tool surface by default — only 8 high-value tools are registered; the lower-value list/health endpoints (`package_list`, `organization_*`, `group_list`, `tag_list`, `resource_show`, `site_read`, `status_show`) are gated behind `CKAN_EXPOSE_ALL_TOOLS=1`, cutting per-turn schema context
 * RMV: Drop the four `@mcp.prompt` templates (`search_datasets`, `analyze_neighborhood`, `business_insights`, `educational_data`) — they were an unused proof-of-concept; domain workflows now live in the Toronto Skill
 * DOC: Position the project as a generic CKAN core + Toronto flagship Skill (README); refresh stale model references in `docs/` to current Claude tiers (Opus 4.8 / Sonnet 4.6 / Haiku 4.5)

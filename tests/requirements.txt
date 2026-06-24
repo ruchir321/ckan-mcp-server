@@ -2,6 +2,3 @@
 pytest>=8.0
 pytest-asyncio>=0.23
 aioresponses>=0.7
-
-# Optional: only needed for the live agent integration test (tests/test.py)
-openai-agents>=0.1

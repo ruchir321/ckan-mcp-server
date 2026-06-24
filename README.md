@@ -186,6 +186,45 @@ The server also provides the following resources:
 -   `ckan://api/docs`: API documentation
 -   `ckan://config`: Server configuration
 
+## Civic Agent (demo)
+
+A demo built on top of the server (`agent/` + `evals/`) that answers plain-language civic
+questions **only from the City's own source documents** — quoting verbatim with a citation, and
+**abstaining** when the documents don't cover the question. The MCP tools are commodity plumbing;
+this grounding/abstention behaviour is the part worth trusting, so it is **measured**, not asserted.
+
+```python
+# Grounded answer, or an honest "not covered":
+from agent import answer_question
+ans = await answer_question("how many storeys to register", "apartment-building-evaluation")
+# -> GroundedAnswer(supported=True, answer=..., citations=[{url, quote}])
+```
+
+### Evaluation (Langfuse)
+
+Answer quality is evaluated against `evals/civic_questions.yaml` — a set of real, verified civic
+questions (answerable **and** must-abstain) — with **deterministic** scores (retrieval hit, fact
+recall, citation match, refusal correctness, over-refusal) plus **LLM-as-judge** scores
+(groundedness, citation quality, refusal appropriateness). Runs, traces, and aggregate metrics are
+recorded in a self-hosted [Langfuse](https://langfuse.com).
+
+```bash
+# 1. Install the agent extra
+uv sync --extra agent
+
+# 2. Bring up Langfuse (self-hosted) — official compose, then open http://localhost:3000,
+#    create a project, and copy the API keys into your .env (see env.sample).
+git clone https://github.com/langfuse/langfuse.git && (cd langfuse && docker compose up -d)
+
+# 3. Configure keys (.env): ANTHROPIC_API_KEY, LANGFUSE_HOST, LANGFUSE_PUBLIC_KEY, LANGFUSE_SECRET_KEY
+
+# 4. Sync the eval dataset to Langfuse, then run the experiment
+uv run python -m evals.sync_dataset
+uv run python -m evals.run_eval        # writes evals/report.md and pushes scores to Langfuse
+```
+
+The agent runs without Langfuse too — tracing is a no-op unless `LANGFUSE_PUBLIC_KEY` is set.
+
 ## License
 
 Mozilla Public License Version 2.0
