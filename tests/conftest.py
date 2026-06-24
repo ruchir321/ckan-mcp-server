@@ -8,6 +8,10 @@ import pytest
 # Make the top-level module importable when tests run from anywhere.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Exercise the full tool surface under test (the low-value endpoints are gated off
+# by default). Must be set before importing the server, since tools register at import.
+os.environ.setdefault("CKAN_EXPOSE_ALL_TOOLS", "1")
+
 import document_scraper
 import mcp_ckan_server as server
 

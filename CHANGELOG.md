@@ -2,6 +2,10 @@
 
 2026-06-21 - unreleased
 
+* ENH: Lean tool surface by default — only 8 high-value tools are registered; the lower-value list/health endpoints (`package_list`, `organization_*`, `group_list`, `tag_list`, `resource_show`, `site_read`, `status_show`) are gated behind `CKAN_EXPOSE_ALL_TOOLS=1`, cutting per-turn schema context
+* RMV: Drop the four `@mcp.prompt` templates (`search_datasets`, `analyze_neighborhood`, `business_insights`, `educational_data`) — they were an unused proof-of-concept; domain workflows now live in the Toronto Skill
+* DOC: Position the project as a generic CKAN core + Toronto flagship Skill (README); refresh stale model references in `docs/` to current Claude tiers (Opus 4.8 / Sonnet 4.6 / Haiku 4.5)
+* DOC: Add `skills/toronto-open-data/SKILL.md` — a Claude Agent Skill carrying Toronto domain knowledge (portal conventions, dynamic dataset-discovery + search-chaining patterns, workflow recipes) and the grounding discipline, so domain IP lives in a progressively-disclosed Skill while the MCP server stays a lean, portable tool layer
 * SEC: SSRF guard on the document tools — `ckan_read_web_document` and the crawler now fetch only public http(s) hosts; private/loopback/link-local addresses (e.g. cloud metadata `169.254.169.254`) are blocked. Opt-in `CKAN_DOC_ALLOWED_HOSTS` allowlist for locked-down deployments
 * ENH: Finer section chunking for grounded-doc retrieval — long sections split on paragraph boundaries, restoring meaningful BM25 scoring on small per-dataset corpora and yielding tighter citations
 * FIX: Strip inline markdown-link syntax from section headings so citations read `Standards` instead of `[Standards](https://…)`

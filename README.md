@@ -13,6 +13,16 @@ This MCP server bridges the gap between manual data fetching and automated analy
 
 It is designed to be dropped into any MCP-compatible IDE or agent to instantly give it access to the wealth of open data available on CKAN portals.
 
+### Generic core + Toronto flagship Skill
+
+The **MCP server is portal-agnostic** — point `CKAN_URL` at any CKAN instance and the tools work.
+Portal-specific *domain knowledge* (which datasets matter, how to chain searches, the grounding
+discipline for citing source documents) lives separately in a **Claude Agent Skill**, keeping the
+server lean and reusable. The reference Skill ships in this repo:
+[`skills/toronto-open-data/`](skills/toronto-open-data/SKILL.md) for the City of Toronto Open Data
+portal. Copy or symlink it into `~/.claude/skills/` to use it; author similar Skills for other
+portals while reusing the same server.
+
 ## Requirements
 
 - Python 3.13 or higher
@@ -56,6 +66,7 @@ Set the following environment variables:
 -   `CKAN_URL`: The base URL of your CKAN portal (e.g. `https://demo.ckan.org`)
 -   `CKAN_API_KEY`: (Optional) Your CKAN API key for write operations
 -   `CKAN_DOC_ALLOWED_HOSTS`: (Optional) Comma-separated allowlist of hosts the document tools may fetch. By default only public http(s) hosts are allowed and private/loopback/link-local addresses are blocked (SSRF protection); set this to restrict fetches to specific hosts.
+-   `CKAN_EXPOSE_ALL_TOOLS`: (Optional) Set to `1` to register the lower-value list/health endpoints in addition to the default lean tool set.
 
 Example:
 
@@ -137,53 +148,36 @@ Use the absolute path to the Python executable in your virtual environment to en
 
 ## Available Tools
 
-The MCP server provides the following tools:
+By default the server exposes a lean set of **8 high-value tools** (below). The lower-value
+list/health endpoints are hidden to keep the advertised tool surface — and its per-turn context
+cost — small. Set `CKAN_EXPOSE_ALL_TOOLS=1` to register the additional endpoints as well.
 
-### Packages/Datasets
--   `ckan_package_list`: List all packages
--   `ckan_package_show`: Show details of a specific package
--   `ckan_package_search`: Search for packages
+### Default tools
+
+**Packages/Datasets**
+-   `ckan_package_show`: Show details of a specific package (trimmed by default; `full=True` for raw)
+-   `ckan_package_search`: Search for packages (trimmed by default; `full=True` for raw)
 -   `ckan_dataset_schema`: Get the schema/structure of a dataset (resources and fields)
 
-### Data Analysis
+**Data Analysis**
 -   `ckan_resource_preview`: Preview the content of a resource (first N rows)
 -   `ckan_datastore_search`: Search and query DataStore tables (SQL-like capabilities)
 
-### Grounded Documentation
-These read the authoritative documents linked from a dataset's metadata
-(`information_url` + links in `notes`), so the agent can answer legal/bylaw
-follow-ups from a cited source of truth instead of guessing.
+**Grounded Documentation** — read the authoritative documents linked from a dataset's metadata
+(`information_url` + links in `notes`), so the agent can answer legal/bylaw follow-ups from a cited
+source of truth instead of guessing.
 -   `ckan_fetch_dataset_docs`: Crawl a dataset's linked docs (HTML + PDF, in-scope subpages) and return them as Markdown with source URLs
 -   `ckan_search_dataset_docs`: Return the top-k passages from those docs matching a query, each with its source URL and heading (citable)
--   `ckan_read_web_document`: Fetch a single arbitrary URL as clean Markdown
+-   `ckan_read_web_document`: Fetch a single URL as clean Markdown (public hosts only; see SSRF note)
 
-### Organizations & Groups
--   `ckan_organization_list`: List all organizations
--   `ckan_organization_show`: Show organization details
+### Additional tools (`CKAN_EXPOSE_ALL_TOOLS=1`)
+-   `ckan_package_list`: List all packages
+-   `ckan_organization_list` / `ckan_organization_show`: List / show organizations
 -   `ckan_group_list`: List all groups
 -   `ckan_tag_list`: List all tags
-
-### System
 -   `ckan_resource_show`: Show resource details
 -   `ckan_site_read`: Site information
 -   `ckan_status_show`: Status and version information
-
-## Available Prompts
-
-Prompts allow the server to provide context-aware templates to the AI agent. This server includes several examples tailored for open data exploration:
-
--   `search_datasets`: Help find datasets with specific criteria (e.g., "Find climate data in CSV format").
--   `analyze_neighborhood`: Analyze a specific topic within a neighborhood.
--   `business_insights`: Get insights for opening a business in a specific location.
--   `educational_data`: Find datasets suitable for educational purposes (beginner vs advanced).
-
-### Developer Guidelines for Prompts
-
-Prompts are dynamic and should be tailored to specific use cases. The examples above demonstrate how to guide an AI agent through complex data discovery tasks. When adding new prompts:
-
-1.  **Identify the User Goal**: What is the user trying to achieve? (e.g., "Find a place to live", "Analyze traffic patterns").
-2.  **Chain of Thought**: Structure the prompt to guide the AI through a logical sequence of steps (Search -> Filter -> Analyze).
-3.  **Context Injection**: Use arguments to inject specific context (e.g., neighborhood name, business type) into the prompt template.
 
 ## Resources
 

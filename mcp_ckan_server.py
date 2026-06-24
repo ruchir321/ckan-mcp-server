@@ -153,6 +153,22 @@ async def lifespan(_server: FastMCP):
 mcp = FastMCP("ckan-mcp-server", lifespan=lifespan)
 
 
+# Low-value list/health endpoints are hidden by default to keep the advertised tool
+# surface (and the per-turn context cost of its schemas) lean. Set CKAN_EXPOSE_ALL_TOOLS=1
+# to register them as well.
+EXPOSE_ALL_TOOLS = os.getenv("CKAN_EXPOSE_ALL_TOOLS", "").strip().lower() in (
+    "1", "true", "yes", "on",
+)
+
+
+def optional_tool(fn):
+    """Register a tool only when CKAN_EXPOSE_ALL_TOOLS is set.
+
+    When the flag is off, the bare function is returned unregistered, so it is not
+    advertised to MCP clients (but remains importable/callable in-process)."""
+    return mcp.tool()(fn) if EXPOSE_ALL_TOOLS else fn
+
+
 # --- Response helpers ---
 
 def _summarize_package(pkg: Dict[str, Any], include_resources: bool = True) -> Dict[str, Any]:
@@ -191,7 +207,7 @@ def _summarize_package(pkg: Dict[str, Any], include_resources: bool = True) -> D
 
 # --- Tools ---
 
-@mcp.tool()
+@optional_tool
 async def ckan_package_list(limit: int = 100, offset: int = 0) -> List[str]:
     """Get list of all packages (datasets) in CKAN (unsorted)"""
     client = await get_client()
@@ -239,7 +255,7 @@ async def ckan_package_search(
     }
 
 
-@mcp.tool()
+@optional_tool
 async def ckan_organization_list(all_fields: bool = False) -> List[Any]:
     """Get list of all organizations"""
     client = await get_client()
@@ -248,7 +264,7 @@ async def ckan_organization_list(all_fields: bool = False) -> List[Any]:
     )
 
 
-@mcp.tool()
+@optional_tool
 async def ckan_organization_show(id: str, include_datasets: bool = False) -> Dict[str, Any]:
     """Get details of a specific organization"""
     client = await get_client()
@@ -259,7 +275,7 @@ async def ckan_organization_show(id: str, include_datasets: bool = False) -> Dic
     )
 
 
-@mcp.tool()
+@optional_tool
 async def ckan_group_list(all_fields: bool = False) -> List[Any]:
     """Get list of all groups"""
     client = await get_client()
@@ -268,7 +284,7 @@ async def ckan_group_list(all_fields: bool = False) -> List[Any]:
     )
 
 
-@mcp.tool()
+@optional_tool
 async def ckan_tag_list(vocabulary_id: Optional[str] = None) -> List[Any]:
     """Get list of all tags"""
     client = await get_client()
@@ -276,21 +292,21 @@ async def ckan_tag_list(vocabulary_id: Optional[str] = None) -> List[Any]:
     return await client._make_request("GET", "tag_list", params=params)
 
 
-@mcp.tool()
+@optional_tool
 async def ckan_resource_show(id: str) -> Dict[str, Any]:
     """Get details of a specific resource"""
     client = await get_client()
     return await client._make_request("GET", "resource_show", params={"id": id})
 
 
-@mcp.tool()
+@optional_tool
 async def ckan_site_read() -> Dict[str, Any]:
     """Get site information and statistics"""
     client = await get_client()
     return await client._make_request("GET", "site_read")
 
 
-@mcp.tool()
+@optional_tool
 async def ckan_status_show() -> Dict[str, Any]:
     """Get CKAN site status and version information"""
     client = await get_client()
@@ -515,68 +531,6 @@ def get_config() -> str:
         },
         indent=2,
     )
-
-
-# --- Prompts ---
-
-@mcp.prompt()
-def search_datasets(query: str, file_format: Optional[str] = None) -> str:
-    """Help find datasets with specific criteria"""
-    prompt = f"""
-I am looking for datasets related to "{query}" in the City of Toronto Open Data portal.
-Please help me find the most relevant packages.
-1. Search for packages matching "{query}".
-"""
-    if file_format:
-        prompt += f"2. Filter or prioritize results that contain resources in '{file_format}' format (e.g., CSV, GeoJSON).\n"
-    
-    prompt += "3. List the top results with their titles, IDs, and brief descriptions."
-    return prompt
-
-
-@mcp.prompt()
-def analyze_neighborhood(neighborhood: str, topic: str) -> str:
-    """Analyze a specific topic within a Toronto neighborhood"""
-    return f"""
-I want to analyze the neighborhood of "{neighborhood}" in Toronto regarding "{topic}".
-Please guide me to the relevant data.
-1. Search for datasets that contain "{topic}" and have geospatial data or neighborhood attributes.
-2. Look for "Neighborhood Profiles" or census data that covers "{neighborhood}".
-3. If available, show me how to filter the data for this specific neighborhood.
-"""
-
-
-@mcp.prompt()
-def business_insights(business_type: str, location: str) -> str:
-    """Get insights for opening a business in a specific location"""
-    return f"""
-I am planning to open a "{business_type}" business in "{location}", Toronto.
-I need data to understand the market and competition.
-1. Search for "Municipal Licensing and Standards" or "Business Licences" data.
-2. Filter for existing businesses of type "{business_type}" in or near "{location}".
-3. Find demographic data for "{location}" to understand the potential customer base.
-"""
-
-
-@mcp.prompt()
-def educational_data(topic: str, level: str = "beginner") -> str:
-    """Find datasets suitable for educational purposes"""
-    prompt = f"""
-I am a {level} student looking for data about "{topic}" to practice my analysis skills.
-"""
-    if level == "beginner":
-        prompt += """
-1. Please find simple, clean datasets (like CSVs) with clear column names.
-2. Avoid complex geospatial formats or very large files.
-3. Suggest a simple question I could answer with this data.
-"""
-    else:
-        prompt += """
-1. Find comprehensive datasets, potentially with multiple resources or time-series data.
-2. It's okay if the data requires some cleaning or joining with other sets.
-3. Suggest a challenging analysis or visualization project.
-"""
-    return prompt
 
 
 def main() -> None:

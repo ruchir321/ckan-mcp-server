@@ -1,11 +1,17 @@
 """Offline tests for the CKAN client and tools (HTTP mocked with aioresponses)."""
 
+import os
+import subprocess
+import sys
+
 import pytest
 from aioresponses import aioresponses
 from fastmcp.exceptions import ToolError
 
 import mcp_ckan_server as server
 from conftest import action_re, action_url
+
+REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # A representative raw CKAN package, with noisy fields (extras, tracking) that
 # the summarizer is expected to drop.
@@ -126,3 +132,34 @@ async def test_resource_preview_falls_back_to_metadata():
         m.get(action_re("resource_show"), payload={"success": True, "result": {"id": "r1", "format": "CSV"}})
         result = await server.ckan_resource_preview.fn(resource_id="r1")
     assert result == {"id": "r1", "format": "CSV"}
+
+
+# --- Tool-surface gating (CKAN_EXPOSE_ALL_TOOLS) ---
+
+def _gating_probe(flag_value):
+    """Import the server in a fresh process and report whether a gated low-value
+    tool and an always-on high-value tool are registered (have a `.fn`)."""
+    code = (
+        "import mcp_ckan_server as s;"
+        "print(hasattr(s.ckan_status_show, 'fn'), hasattr(s.ckan_package_show, 'fn'))"
+    )
+    env = dict(os.environ)
+    env["CKAN_URL"] = "https://ckan.test"
+    env.pop("CKAN_EXPOSE_ALL_TOOLS", None)
+    if flag_value is not None:
+        env["CKAN_EXPOSE_ALL_TOOLS"] = flag_value
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        capture_output=True, text=True, env=env, cwd=REPO_ROOT,
+    )
+    assert out.returncode == 0, out.stderr
+    return out.stdout.strip()
+
+
+def test_low_value_tools_hidden_by_default():
+    # Lean default: status_show unregistered, package_show still registered.
+    assert _gating_probe(None) == "False True"
+
+
+def test_expose_all_tools_flag_registers_low_value_tools():
+    assert _gating_probe("1") == "True True"

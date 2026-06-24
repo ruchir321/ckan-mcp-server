@@ -30,7 +30,7 @@ graph TD
 
 ### The Tech Stack
 *   **Frontend:** Next.js (React) or Vite. We'll use a modern UI library (like TailwindCSS or a component library) to create a premium, clean interface. 
-*   **Backend/Agent Layer:** A Python backend (FastAPI) or Next.js server actions running an LLM (like Claude or GPT-4). This LLM will be equipped with your CKAN MCP server as its primary tool.
+*   **Backend/Agent Layer:** A Python backend (FastAPI) or Next.js server actions running an LLM (e.g. Claude Opus 4.8 or Sonnet 4.6). This LLM will be equipped with your CKAN MCP server as its primary tool.
 *   **Visualizations:** Recharts or Chart.js for rendering graphs dynamically based on the data the LLM retrieves.
 
 ## 3. User Experience (UX) & Features
