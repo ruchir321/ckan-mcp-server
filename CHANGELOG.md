@@ -2,6 +2,9 @@
 
 2026-06-21 - unreleased
 
+* SEC: SSRF guard on the document tools — `ckan_read_web_document` and the crawler now fetch only public http(s) hosts; private/loopback/link-local addresses (e.g. cloud metadata `169.254.169.254`) are blocked. Opt-in `CKAN_DOC_ALLOWED_HOSTS` allowlist for locked-down deployments
+* ENH: Finer section chunking for grounded-doc retrieval — long sections split on paragraph boundaries, restoring meaningful BM25 scoring on small per-dataset corpora and yielding tighter citations
+* FIX: Strip inline markdown-link syntax from section headings so citations read `Standards` instead of `[Standards](https://…)`
 * ENH: Grounded documentation tools `ckan_fetch_dataset_docs` and `ckan_search_dataset_docs` — crawl a dataset's external links (HTML + PDF, in-scope subpages) and retrieve cited passages (BM25) for hallucination-free legal/bylaw answers
 * ENH: Shared HTTP session with timeouts; trimmed `package_search`/`package_show` responses (`full=True` to opt out); clear `ToolError`s; `CKAN_URL` validation
 * FIX: Corrected `pyproject.toml` (cleaned dependencies, relaxed `requires-python` to 3.10, removed redundant `setup.py`)

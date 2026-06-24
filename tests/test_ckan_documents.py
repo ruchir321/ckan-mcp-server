@@ -1,9 +1,15 @@
 """Offline tests for document_scraper (crawler / extraction / ranking)."""
 
+import socket
+
 from aioresponses import aioresponses
 
 import document_scraper as ds
 from document_scraper import Page
+
+
+def _resolves_to(ip):
+    return lambda *a, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
 
 
 # --- Minimal valid PDF builder (text-extractable) ---
@@ -79,6 +85,20 @@ def test_split_sections():
     assert "heat" in secs[0].text
 
 
+def test_split_sections_strips_markdown_links_from_headings():
+    page = Page("u", "T", "# [Standards](https://x.ca/standards)\nBody text here.", "html")
+    secs = ds.split_sections(page)
+    assert secs[0].heading == "Standards"
+
+
+def test_clean_heading_leaves_plain_text_untouched():
+    assert ds._clean_heading("Plain Heading") == "Plain Heading"
+
+
+def test_first_heading_strips_markdown_links():
+    assert ds._first_heading("# [RentSafeTO](https://toronto.ca)\n\ntext") == "RentSafeTO"
+
+
 def test_rank_sections_returns_relevant_section():
     pages = [
         Page("u1", "Standards", "# Heating\nLandlords must provide heat between months.", "html"),
@@ -92,6 +112,79 @@ def test_rank_sections_returns_relevant_section():
 def test_rank_sections_no_match_returns_empty():
     pages = [Page("u", "T", "# Heating\nLandlords must provide heat.", "html")]
     assert ds.rank_sections(pages, "zzzznonexistentterm", k=3) == []
+
+
+def test_rank_sections_single_section_corpus():
+    # Degenerate one-section corpus: BM25 IDF collapses, overlap floor must retrieve.
+    pages = [Page("u", "Standards", "# Registration\nBuildings of three or more storeys must register.", "html")]
+    results = ds.rank_sections(pages, "storeys register", k=3)
+    assert results and "storeys" in results[0].text
+
+
+def test_rank_sections_term_in_all_sections_still_returns():
+    # 'heat' appears in every section -> BM25 IDF -> 0; the overlap floor saves it.
+    pages = [
+        Page("u", "T", "# Winter\nLandlords must provide heat in winter.", "html"),
+        Page("u", "T", "# Summer\nLandlords must provide heat in summer too.", "html"),
+    ]
+    results = ds.rank_sections(pages, "heat", k=5)
+    assert len(results) >= 1
+
+
+def test_split_sections_chunks_long_bodies():
+    long_body = "\n\n".join(f"Paragraph {i} discusses heating obligations in detail." for i in range(80))
+    page = Page("u", "T", f"# Heating\n{long_body}", "html")
+    secs = ds.split_sections(page)
+    assert len(secs) > 1                                   # corpus is no longer a single doc
+    assert all(s.heading == "Heating" for s in secs)       # heading preserved across chunks
+    assert all(len(s.text) <= ds.MAX_SECTION_CHARS + 80 for s in secs)
+
+
+# --- SSRF guard ---
+
+def test_is_safe_url_rejects_non_http():
+    assert ds.is_safe_url("ftp://example.com/x") is False
+    assert ds.is_safe_url("file:///etc/passwd") is False
+    assert ds.is_safe_url("notaurl") is False
+
+
+def test_is_safe_url_rejects_metadata_localhost_and_private(monkeypatch):
+    monkeypatch.setattr(ds.socket, "getaddrinfo", _resolves_to("169.254.169.254"))
+    assert ds.is_safe_url("http://metadata.internal/latest/meta-data/") is False
+    monkeypatch.setattr(ds.socket, "getaddrinfo", _resolves_to("127.0.0.1"))
+    assert ds.is_safe_url("http://localhost/admin") is False
+    monkeypatch.setattr(ds.socket, "getaddrinfo", _resolves_to("10.0.0.5"))
+    assert ds.is_safe_url("http://internal.corp/secrets") is False
+
+
+def test_is_safe_url_allows_public(monkeypatch):
+    monkeypatch.setattr(ds.socket, "getaddrinfo", _resolves_to("93.184.216.34"))
+    assert ds.is_safe_url("https://www.toronto.ca/standards") is True
+
+
+def test_is_safe_url_unresolvable_is_rejected(monkeypatch):
+    def boom(*a, **k):
+        raise socket.gaierror("no such host")
+    monkeypatch.setattr(ds.socket, "getaddrinfo", boom)
+    assert ds.is_safe_url("https://nonexistent.invalid/") is False
+
+
+def test_is_safe_url_allowlist_overrides(monkeypatch):
+    monkeypatch.setenv("CKAN_DOC_ALLOWED_HOSTS", "www.toronto.ca, data.gov")
+    # Allowlisted host passes without any DNS resolution...
+    monkeypatch.setattr(ds.socket, "getaddrinfo", _resolves_to("127.0.0.1"))
+    assert ds.is_safe_url("https://www.toronto.ca/x") is True
+    # ...and anything off the list is refused.
+    assert ds.is_safe_url("https://evil.example/x") is False
+
+
+async def test_crawl_skips_unsafe_urls(monkeypatch):
+    monkeypatch.setattr(ds.socket, "getaddrinfo", _resolves_to("127.0.0.1"))
+    seed = "https://site.test/a/"
+    with aioresponses() as m:
+        m.get(seed, body="<p>should not be fetched</p>", content_type="text/html")
+        pages = await ds.crawl([seed], obey_robots=False, delay=0)
+    assert pages == []
 
 
 # --- Crawler (mocked HTTP) ---

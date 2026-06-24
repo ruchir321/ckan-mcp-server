@@ -12,8 +12,11 @@ store. An in-process TTL cache avoids re-crawling within a session.
 
 import asyncio
 import io
+import ipaddress
 import logging
+import os
 import re
+import socket
 import ssl
 import time
 from collections import deque
@@ -90,9 +93,21 @@ def extract_links(html: str, base_url: str) -> List[str]:
     return links
 
 
+_MD_LINK_INLINE = re.compile(r"\[([^\]]+)\]\((?:https?://)?[^)\s]+\)")
+
+
+def _clean_heading(text: str) -> str:
+    """Flatten inline markdown links in a heading to their visible text.
+
+    markdownify sometimes renders a heading as ``[Standards](https://...)``;
+    keeping the raw form makes citations noisy, so reduce it to ``Standards``.
+    """
+    return _MD_LINK_INLINE.sub(r"\1", text).strip()
+
+
 def _first_heading(markdown: str) -> Optional[str]:
     m = re.search(r"^#{1,6}\s+(.*)$", markdown, flags=re.MULTILINE)
-    return m.group(1).strip() if m else None
+    return _clean_heading(m.group(1)) if m else None
 
 
 def _title_from_url(url: str) -> str:
@@ -140,6 +155,42 @@ def _in_any_scope(url: str, prefixes: List[Tuple[str, str]]) -> bool:
     p = urlparse(url)
     host, path = p.netloc.lower(), p.path
     return any(host == h and path.startswith(prefix) for h, prefix in prefixes)
+
+
+# --- SSRF guard ---
+
+def _doc_allowed_hosts() -> set:
+    """Optional explicit host allowlist from CKAN_DOC_ALLOWED_HOSTS (comma-separated)."""
+    raw = os.getenv("CKAN_DOC_ALLOWED_HOSTS", "")
+    return {h.strip().lower() for h in raw.split(",") if h.strip()}
+
+
+def is_safe_url(url: str) -> bool:
+    """Guard outbound document fetches against SSRF.
+
+    Rejects non-http(s) URLs and any host that resolves to a non-public address
+    (private, loopback, link-local, or reserved — e.g. the cloud metadata endpoint
+    169.254.169.254). If CKAN_DOC_ALLOWED_HOSTS is set, ONLY those hosts pass
+    (explicit allowlist for locked-down deployments).
+    """
+    p = urlparse(url)
+    if p.scheme not in ("http", "https") or not p.hostname:
+        return False
+    host = p.hostname.lower()
+
+    allow = _doc_allowed_hosts()
+    if allow:
+        return host in allow
+
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return False
+    for *_, sockaddr in infos:
+        ip = ipaddress.ip_address(sockaddr[0])
+        if not ip.is_global or ip.is_reserved:
+            return False
+    return True
 
 
 # --- Crawler ---
@@ -197,6 +248,9 @@ async def crawl(
     try:
         while queue and len(pages) < max_pages:
             url, depth = queue.popleft()
+            if not is_safe_url(url):
+                logger.warning("SSRF guard: skipping non-public URL %s", url)
+                continue
             if obey_robots and not await _allowed(session, url, robots_cache):
                 logger.info("robots.txt disallows %s", url)
                 continue
@@ -247,28 +301,62 @@ async def gather_dataset_pages(
 # --- Tier 1 retrieval ---
 
 _TOKEN_RE = re.compile(r"\w+")
+# Cap on a section's length before it is chunked on paragraph boundaries. Keeping
+# sections small grows the retrieval corpus, which (a) restores meaningful BM25 IDF
+# on tiny per-dataset docs and (b) yields tighter, more quotable citations.
+MAX_SECTION_CHARS = 1200
 
 
 def _tokenize(text: str) -> List[str]:
     return _TOKEN_RE.findall(text.lower())
 
 
+def _emit_sections(url: str, heading: str, body: str) -> List[Section]:
+    """Turn a heading's body into one or more Sections.
+
+    Short bodies stay whole; long bodies are packed into chunks of <= ~MAX_SECTION_CHARS
+    on blank-line paragraph boundaries (never splitting mid-paragraph)."""
+    body = body.strip()
+    if not body:
+        return []
+    if len(body) <= MAX_SECTION_CHARS:
+        return [Section(url, heading, body)]
+
+    out: List[Section] = []
+    chunk: List[str] = []
+    size = 0
+    for para in re.split(r"\n\s*\n", body):
+        para = para.strip()
+        if not para:
+            continue
+        if chunk and size + len(para) > MAX_SECTION_CHARS:
+            out.append(Section(url, heading, "\n\n".join(chunk)))
+            chunk, size = [], 0
+        chunk.append(para)
+        size += len(para)
+    if chunk:
+        out.append(Section(url, heading, "\n\n".join(chunk)))
+    return out
+
+
 def split_sections(page: Page) -> List[Section]:
-    """Split a page's text into heading-anchored sections for citation."""
+    """Split a page's text into heading-anchored sections for citation.
+
+    Long bodies under one heading are further chunked on paragraph boundaries
+    (see `_emit_sections`) so the retrieval corpus stays granular."""
     sections: List[Section] = []
     heading = page.title or _title_from_url(page.url)
     buf: List[str] = []
 
     def flush():
         body = "\n".join(buf).strip()
-        if body:
-            sections.append(Section(page.url, heading, body))
+        sections.extend(_emit_sections(page.url, heading, body))
 
     for line in page.text.splitlines():
         m = re.match(r"^(#{1,6})\s+(.*)$", line)
         if m:
             flush()
-            heading = m.group(2).strip()
+            heading = _clean_heading(m.group(2))
             buf = []
         else:
             buf.append(line)

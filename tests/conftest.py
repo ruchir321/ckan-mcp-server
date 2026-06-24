@@ -1,5 +1,6 @@
 import os
 import re
+import socket
 import sys
 
 import pytest
@@ -7,7 +8,19 @@ import pytest
 # Make the top-level module importable when tests run from anywhere.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import document_scraper
 import mcp_ckan_server as server
+
+
+@pytest.fixture(autouse=True)
+def stub_dns(monkeypatch):
+    """Keep the SSRF guard offline-deterministic: resolve every host to a fixed
+    public IP so the mocked crawler isn't blocked and no real DNS is hit. Tests
+    that exercise is_safe_url's IP logic override this with their own mock."""
+    def fake_getaddrinfo(host, *args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(document_scraper.socket, "getaddrinfo", fake_getaddrinfo)
 
 TEST_CKAN_URL = "https://ckan.test"
 

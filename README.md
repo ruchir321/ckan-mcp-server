@@ -55,6 +55,7 @@ Set the following environment variables:
 
 -   `CKAN_URL`: The base URL of your CKAN portal (e.g. `https://demo.ckan.org`)
 -   `CKAN_API_KEY`: (Optional) Your CKAN API key for write operations
+-   `CKAN_DOC_ALLOWED_HOSTS`: (Optional) Comma-separated allowlist of hosts the document tools may fetch. By default only public http(s) hosts are allowed and private/loopback/link-local addresses are blocked (SSRF protection); set this to restrict fetches to specific hosts.
 
 Example:
 

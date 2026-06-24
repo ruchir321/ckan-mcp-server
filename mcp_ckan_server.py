@@ -348,9 +348,14 @@ async def ckan_read_web_document(url: str, max_chars: int = MAX_DOCUMENT_CHARS) 
     Fetch a webpage and return its content as clean Markdown.
     Crucial for reading 'More Information' documentation links or bylaws associated with datasets.
 
-    Note: this fetches whatever URL it is given. Add an allowlist before exposing
-    this tool in any public-facing deployment (SSRF risk).
+    Outbound requests pass an SSRF guard (`document_scraper.is_safe_url`): only public
+    http(s) hosts are fetched. Set CKAN_DOC_ALLOWED_HOSTS to restrict to an allowlist.
     """
+    if not document_scraper.is_safe_url(url):
+        return (
+            "Refused to fetch this URL: it does not resolve to a public http(s) address "
+            "(SSRF guard). Set CKAN_DOC_ALLOWED_HOSTS to permit specific hosts."
+        )
     timeout = aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT)
     headers = {"User-Agent": "MCP-CKAN-Server"}
     try:
