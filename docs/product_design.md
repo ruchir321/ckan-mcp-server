@@ -55,6 +55,3 @@ If we want to start building this, here is the immediate roadmap:
 3.  **Chat UI:** Build the chat interface and the components to render tables and charts.
 4.  **Deployment:** Deploy the frontend (Vercel/Netlify) and the backend + MCP server (Render/Fly.io) so the public can access it.
 
----
-> [!TIP]
-> **What are your thoughts on this architecture?** We can start by initializing the frontend web app right here in a new folder, or we can build the Agent API layer first. Let me know which part you'd like to tackle!

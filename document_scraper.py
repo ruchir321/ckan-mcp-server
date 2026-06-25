@@ -94,6 +94,7 @@ def extract_links(html: str, base_url: str) -> List[str]:
 
 
 _MD_LINK_INLINE = re.compile(r"\[([^\]]+)\]\((?:https?://)?[^)\s]+\)")
+_HEADING_RE = re.compile(r"^#{1,6}\s+(.*)$", flags=re.MULTILINE)
 
 
 def _clean_heading(text: str) -> str:
@@ -106,7 +107,7 @@ def _clean_heading(text: str) -> str:
 
 
 def _first_heading(markdown: str) -> Optional[str]:
-    m = re.search(r"^#{1,6}\s+(.*)$", markdown, flags=re.MULTILINE)
+    m = _HEADING_RE.search(markdown)
     return _clean_heading(m.group(1)) if m else None
 
 
@@ -353,10 +354,10 @@ def split_sections(page: Page) -> List[Section]:
         sections.extend(_emit_sections(page.url, heading, body))
 
     for line in page.text.splitlines():
-        m = re.match(r"^(#{1,6})\s+(.*)$", line)
+        m = _HEADING_RE.match(line)
         if m:
             flush()
-            heading = _clean_heading(m.group(2))
+            heading = _clean_heading(m.group(1))
             buf = []
         else:
             buf.append(line)
