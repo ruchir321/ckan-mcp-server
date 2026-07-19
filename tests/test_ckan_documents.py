@@ -2,10 +2,11 @@
 
 import socket
 
+import pytest
 from aioresponses import aioresponses
 
-import document_scraper as ds
-from document_scraper import Page
+from ckan_mcp_server import documents as ds
+from ckan_mcp_server.documents import Page
 
 
 def _resolves_to(ip):
@@ -13,6 +14,7 @@ def _resolves_to(ip):
 
 
 # --- Minimal valid PDF builder (text-extractable) ---
+
 
 def _make_pdf(text: str) -> bytes:
     objs = [
@@ -22,7 +24,9 @@ def _make_pdf(text: str) -> bytes:
         b"/Resources<</Font<</F1 5 0 R>>>>>>",
     ]
     stream = b"BT /F1 18 Tf 20 100 Td (" + text.encode("latin-1") + b") Tj ET"
-    objs.append(b"<</Length " + str(len(stream)).encode() + b">>\nstream\n" + stream + b"\nendstream")
+    objs.append(
+        b"<</Length " + str(len(stream)).encode() + b">>\nstream\n" + stream + b"\nendstream"
+    )
     objs.append(b"<</Type/Font/Subtype/Type1/BaseFont/Helvetica>>")
 
     pdf = b"%PDF-1.4\n"
@@ -33,7 +37,7 @@ def _make_pdf(text: str) -> bytes:
     xref_pos = len(pdf)
     pdf += b"xref\n0 " + str(len(objs) + 1).encode() + b"\n0000000000 65535 f \n"
     for off in offsets:
-        pdf += ("%010d 00000 n \n" % off).encode()
+        pdf += f"{off:010d} 00000 n \n".encode()
     pdf += (
         b"trailer<</Size " + str(len(objs) + 1).encode() + b"/Root 1 0 R>>\n"
         b"startxref\n" + str(xref_pos).encode() + b"\n%%EOF"
@@ -42,6 +46,7 @@ def _make_pdf(text: str) -> bytes:
 
 
 # --- Pure helpers ---
+
 
 def test_discover_doc_urls_dedups_and_orders():
     pkg = {
@@ -77,8 +82,11 @@ def test_scope_helpers():
 
 # --- Tier 1 ranking ---
 
+
 def test_split_sections():
-    page = Page("u", "T", "# Heating\nLandlords must provide heat.\n# Pests\nNo cockroaches.", "html")
+    page = Page(
+        "u", "T", "# Heating\nLandlords must provide heat.\n# Pests\nNo cockroaches.", "html"
+    )
     secs = ds.split_sections(page)
     headings = [s.heading for s in secs]
     assert headings == ["Heating", "Pests"]
@@ -102,7 +110,12 @@ def test_first_heading_strips_markdown_links():
 def test_rank_sections_returns_relevant_section():
     pages = [
         Page("u1", "Standards", "# Heating\nLandlords must provide heat between months.", "html"),
-        Page("u1", "Standards", "# Registration\nBuildings of three or more storeys must register.", "html"),
+        Page(
+            "u1",
+            "Standards",
+            "# Registration\nBuildings of three or more storeys must register.",
+            "html",
+        ),
     ]
     results = ds.rank_sections(pages, "how many storeys to register", k=1)
     assert len(results) == 1
@@ -116,7 +129,14 @@ def test_rank_sections_no_match_returns_empty():
 
 def test_rank_sections_single_section_corpus():
     # Degenerate one-section corpus: BM25 IDF collapses, overlap floor must retrieve.
-    pages = [Page("u", "Standards", "# Registration\nBuildings of three or more storeys must register.", "html")]
+    pages = [
+        Page(
+            "u",
+            "Standards",
+            "# Registration\nBuildings of three or more storeys must register.",
+            "html",
+        )
+    ]
     results = ds.rank_sections(pages, "storeys register", k=3)
     assert results and "storeys" in results[0].text
 
@@ -132,15 +152,18 @@ def test_rank_sections_term_in_all_sections_still_returns():
 
 
 def test_split_sections_chunks_long_bodies():
-    long_body = "\n\n".join(f"Paragraph {i} discusses heating obligations in detail." for i in range(80))
+    long_body = "\n\n".join(
+        f"Paragraph {i} discusses heating obligations in detail." for i in range(80)
+    )
     page = Page("u", "T", f"# Heating\n{long_body}", "html")
     secs = ds.split_sections(page)
-    assert len(secs) > 1                                   # corpus is no longer a single doc
-    assert all(s.heading == "Heating" for s in secs)       # heading preserved across chunks
+    assert len(secs) > 1  # corpus is no longer a single doc
+    assert all(s.heading == "Heating" for s in secs)  # heading preserved across chunks
     assert all(len(s.text) <= ds.MAX_SECTION_CHARS + 80 for s in secs)
 
 
 # --- SSRF guard ---
+
 
 def test_is_safe_url_rejects_non_http():
     assert ds.is_safe_url("ftp://example.com/x") is False
@@ -165,17 +188,27 @@ def test_is_safe_url_allows_public(monkeypatch):
 def test_is_safe_url_unresolvable_is_rejected(monkeypatch):
     def boom(*a, **k):
         raise socket.gaierror("no such host")
+
     monkeypatch.setattr(ds.socket, "getaddrinfo", boom)
     assert ds.is_safe_url("https://nonexistent.invalid/") is False
 
 
-def test_is_safe_url_allowlist_overrides(monkeypatch):
+def test_is_safe_url_allowlist_does_not_bypass_private_address_guard(monkeypatch):
     monkeypatch.setenv("CKAN_DOC_ALLOWED_HOSTS", "www.toronto.ca, data.gov")
-    # Allowlisted host passes without any DNS resolution...
     monkeypatch.setattr(ds.socket, "getaddrinfo", _resolves_to("127.0.0.1"))
-    assert ds.is_safe_url("https://www.toronto.ca/x") is True
-    # ...and anything off the list is refused.
+    assert ds.is_safe_url("https://www.toronto.ca/x") is False
     assert ds.is_safe_url("https://evil.example/x") is False
+
+
+def test_is_safe_url_rejects_embedded_credentials(monkeypatch):
+    monkeypatch.setattr(ds.socket, "getaddrinfo", _resolves_to("93.184.216.34"))
+    assert ds.is_safe_url("https://user:password@example.com/x") is False
+
+
+def test_pdf_to_text_rejects_oversized_input(monkeypatch):
+    monkeypatch.setattr(ds, "MAX_DOWNLOAD_BYTES", 8)
+    with pytest.raises(ds.DocumentLimitError, match="download limit"):
+        ds.pdf_to_text(b"%PDF-too-large")
 
 
 async def test_crawl_skips_unsafe_urls(monkeypatch):
@@ -187,7 +220,21 @@ async def test_crawl_skips_unsafe_urls(monkeypatch):
     assert pages == []
 
 
+async def test_crawl_revalidates_redirect_target(monkeypatch):
+    def resolve_by_host(host, *args, **kwargs):
+        ip = "127.0.0.1" if host == "internal.test" else "93.184.216.34"
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, 0))]
+
+    monkeypatch.setattr(ds.socket, "getaddrinfo", resolve_by_host)
+    seed = "https://site.test/a/"
+    with aioresponses() as mocked:
+        mocked.get(seed, status=302, headers={"Location": "http://internal.test/secret"})
+        pages = await ds.crawl([seed], obey_robots=False, delay=0)
+    assert pages == []
+
+
 # --- Crawler (mocked HTTP) ---
+
 
 async def test_crawl_stays_in_scope_and_dedups():
     seed = "https://site.test/a/"
@@ -206,10 +253,8 @@ async def test_crawl_stays_in_scope_and_dedups():
 async def test_crawl_respects_robots():
     seed = "https://site.test/a/"
     with aioresponses() as m:
-        m.get("https://site.test/robots.txt", status=200,
-              body="User-agent: *\nDisallow: /a/secret")
-        m.get(seed, body='<a href="/a/secret">s</a><a href="/a/ok">o</a>',
-              content_type="text/html")
+        m.get("https://site.test/robots.txt", status=200, body="User-agent: *\nDisallow: /a/secret")
+        m.get(seed, body='<a href="/a/secret">s</a><a href="/a/ok">o</a>', content_type="text/html")
         m.get("https://site.test/a/ok", body="<p>ok</p>", content_type="text/html")
         pages = await ds.crawl([seed], obey_robots=True, delay=0, max_depth=2)
     urls = {p.url for p in pages}
@@ -221,8 +266,11 @@ async def test_crawl_extracts_pdf():
     seed = "https://site.test/a/"
     with aioresponses() as m:
         m.get(seed, body='<a href="/a/doc.pdf">doc</a>', content_type="text/html")
-        m.get("https://site.test/a/doc.pdf", body=_make_pdf("Bylaw text"),
-              content_type="application/pdf")
+        m.get(
+            "https://site.test/a/doc.pdf",
+            body=_make_pdf("Bylaw text"),
+            content_type="application/pdf",
+        )
         pages = await ds.crawl([seed], obey_robots=False, delay=0, max_depth=2)
     pdf_pages = [p for p in pages if p.content_type == "pdf"]
     assert len(pdf_pages) == 1
@@ -237,3 +285,10 @@ async def test_crawl_respects_max_pages():
         m.get("https://site.test/a/c", body="<p>c</p>", content_type="text/html")
         pages = await ds.crawl([seed], obey_robots=False, delay=0, max_pages=1, max_depth=2)
     assert len(pages) == 1
+
+
+async def test_crawl_rejects_excessive_limits():
+    with pytest.raises(ds.DocumentLimitError, match="max_pages"):
+        await ds.crawl(["https://site.test/a/"], max_pages=ds.MAX_CRAWL_PAGES + 1)
+    with pytest.raises(ds.DocumentLimitError, match="max_depth"):
+        await ds.crawl(["https://site.test/a/"], max_depth=ds.MAX_CRAWL_DEPTH + 1)

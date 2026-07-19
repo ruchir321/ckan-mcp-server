@@ -2,7 +2,10 @@ import os
 import re
 import socket
 import sys
+from functools import wraps
+from types import SimpleNamespace
 
+import aiohttp
 import pytest
 
 # Make the top-level module importable when tests run from anywhere.
@@ -12,8 +15,28 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 # by default). Must be set before importing the server, since tools register at import.
 os.environ.setdefault("CKAN_EXPOSE_ALL_TOOLS", "1")
 
-import document_scraper
-import mcp_ckan_server as server
+from ckan_mcp_server import documents as document_scraper
+from ckan_mcp_server import server
+
+# aioresponses 0.7.9 predates aiohttp 3.14's required ``stream_writer``
+# ClientResponse argument. Keep the existing offline mocks usable until its next
+# release; this changes constructor plumbing only, not response behavior.
+_client_response_init = aiohttp.ClientResponse.__init__
+
+
+@wraps(_client_response_init)
+def _compatible_client_response_init(self, *args, stream_writer=None, **kwargs):
+    if stream_writer is None:
+        stream_writer = SimpleNamespace(output_size=0)
+    return _client_response_init(
+        self,
+        *args,
+        stream_writer=stream_writer,
+        **kwargs,
+    )
+
+
+aiohttp.ClientResponse.__init__ = _compatible_client_response_init
 
 
 @pytest.fixture(autouse=True)
@@ -21,10 +44,12 @@ def stub_dns(monkeypatch):
     """Keep the SSRF guard offline-deterministic: resolve every host to a fixed
     public IP so the mocked crawler isn't blocked and no real DNS is hit. Tests
     that exercise is_safe_url's IP logic override this with their own mock."""
+
     def fake_getaddrinfo(host, *args, **kwargs):
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0))]
 
     monkeypatch.setattr(document_scraper.socket, "getaddrinfo", fake_getaddrinfo)
+
 
 TEST_CKAN_URL = "https://ckan.test"
 

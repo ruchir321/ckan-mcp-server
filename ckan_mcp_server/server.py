@@ -1,25 +1,16 @@
-#!/usr/bin/env python3
+"""FastMCP tool surface and process lifecycle."""
 
-import asyncio
 import json
 import logging
 import os
-import ssl
 from contextlib import asynccontextmanager
-from typing import Any, Dict, List, Optional
-from urllib.parse import urljoin
+from typing import Any
 
-import aiohttp
-import certifi
-from dotenv import load_dotenv
 from fastmcp import FastMCP
 from fastmcp.exceptions import ToolError
 
-import document_scraper
-
-# Load environment variables
-load_dotenv()
-os.environ["REQUESTS_CA_BUNDLE"] = certifi.where()
+from . import documents
+from .client import CKANAPIClient
 
 # Configure logging (stderr; stdout must stay clean for the stdio transport)
 logging.basicConfig(level=logging.INFO)
@@ -27,102 +18,13 @@ logger = logging.getLogger("mcp-ckan-server")
 
 CKAN_URL = os.getenv("CKAN_URL")
 
-# Default network timeout (seconds) applied to all outbound HTTP requests.
-DEFAULT_TIMEOUT = 30
 # Max characters returned by ckan_read_web_document to avoid context overflow.
 MAX_DOCUMENT_CHARS = 30000
 
 
-class CKANAPIClient:
-    """CKAN API client backed by a single reusable aiohttp session."""
-
-    def __init__(
-        self,
-        base_url: Optional[str],
-        api_key: Optional[str] = None,
-        basic_auth_username: Optional[str] = None,
-        basic_auth_password: Optional[str] = None,
-        timeout: int = DEFAULT_TIMEOUT,
-    ):
-        if not base_url:
-            raise ToolError(
-                "CKAN_URL is not configured. Set the CKAN_URL environment variable "
-                "(e.g. https://ckan0.cf.opendata.inter.prod-toronto.ca)."
-            )
-        self.base_url = base_url.rstrip("/")
-        self.api_key = api_key
-        self.basic_auth_username = basic_auth_username
-        self.basic_auth_password = basic_auth_password
-        self.timeout = aiohttp.ClientTimeout(total=timeout)
-        self.session: Optional[aiohttp.ClientSession] = None
-
-    async def connect(self) -> "CKANAPIClient":
-        """Lazily create the shared session (idempotent)."""
-        if self.session is None or self.session.closed:
-            ssl_context = ssl.create_default_context(cafile=certifi.where())
-            self.session = aiohttp.ClientSession(
-                connector=aiohttp.TCPConnector(ssl=ssl_context),
-                timeout=self.timeout,
-            )
-        return self
-
-    async def close(self) -> None:
-        if self.session and not self.session.closed:
-            await self.session.close()
-        self.session = None
-
-    async def __aenter__(self):
-        return await self.connect()
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
-
-    def _get_headers(self) -> Dict[str, str]:
-        headers = {"User-Agent": "MCP-CKAN-Server"}
-        if self.api_key:
-            headers["Authorization"] = self.api_key
-        return headers
-
-    async def _make_request(
-        self, method: str, endpoint: str, data: Optional[Dict] = None, params: Optional[Dict] = None
-    ) -> Any:
-        """Make an HTTP request to the CKAN action API and return its `result`."""
-        await self.connect()
-        url = urljoin(f"{self.base_url}/api/3/action/", endpoint)
-
-        auth = None
-        if self.basic_auth_username and self.basic_auth_password:
-            auth = aiohttp.BasicAuth(
-                login=self.basic_auth_username, password=self.basic_auth_password
-            )
-
-        # Filter out None values so optional params are omitted entirely.
-        if params:
-            params = {k: v for k, v in params.items() if v is not None}
-
-        try:
-            async with self.session.request(
-                method, url, headers=self._get_headers(), json=data, params=params, auth=auth
-            ) as response:
-                result = await response.json()
-        except asyncio.TimeoutError as e:
-            raise ToolError(
-                f"CKAN request timed out after {self.timeout.total}s: {endpoint}"
-            ) from e
-        except aiohttp.ClientError as e:
-            raise ToolError(f"Failed to reach CKAN at {url}: {e}") from e
-
-        if not result.get("success", False):
-            error_msg = result.get("error", {})
-            logger.warning("CKAN API error for %s: %s", endpoint, error_msg)
-            raise ToolError(f"CKAN API error on {endpoint}: {error_msg}")
-
-        return result.get("result", {})
-
-
 # --- Shared client lifecycle ---
 
-_client: Optional[CKANAPIClient] = None
+_client: CKANAPIClient | None = None
 
 
 async def get_client() -> CKANAPIClient:
@@ -157,7 +59,10 @@ mcp = FastMCP("ckan-mcp-server", lifespan=lifespan)
 # surface (and the per-turn context cost of its schemas) lean. Set CKAN_EXPOSE_ALL_TOOLS=1
 # to register them as well.
 EXPOSE_ALL_TOOLS = os.getenv("CKAN_EXPOSE_ALL_TOOLS", "").strip().lower() in (
-    "1", "true", "yes", "on",
+    "1",
+    "true",
+    "yes",
+    "on",
 )
 
 
@@ -171,23 +76,22 @@ def optional_tool(fn):
 
 # --- Response helpers ---
 
-def _summarize_package(pkg: Dict[str, Any], include_resources: bool = True) -> Dict[str, Any]:
+
+def _summarize_package(pkg: dict[str, Any], include_resources: bool = True) -> dict[str, Any]:
     """Trim a raw CKAN package dict down to the fields an agent usually needs.
 
     The raw payload includes large, rarely-useful blobs (extras, tracking, full
     resource metadata for every file) that bloat the model's context. Callers can
     request the untrimmed object via the tool's `full=True` argument.
     """
-    summary: Dict[str, Any] = {
+    summary: dict[str, Any] = {
         "id": pkg.get("id"),
         "name": pkg.get("name"),
         "title": pkg.get("title"),
         "notes": pkg.get("notes"),
         "organization": (pkg.get("organization") or {}).get("title"),
         "tags": [t.get("name") for t in pkg.get("tags", [])],
-        "formats": sorted(
-            {r.get("format") for r in pkg.get("resources", []) if r.get("format")}
-        ),
+        "formats": sorted({r.get("format") for r in pkg.get("resources", []) if r.get("format")}),
         "num_resources": pkg.get("num_resources"),
         "metadata_modified": pkg.get("metadata_modified"),
     }
@@ -207,8 +111,9 @@ def _summarize_package(pkg: Dict[str, Any], include_resources: bool = True) -> D
 
 # --- Tools ---
 
+
 @optional_tool
-async def ckan_package_list(limit: int = 100, offset: int = 0) -> List[str]:
+async def ckan_package_list(limit: int = 100, offset: int = 0) -> list[str]:
     """Get list of all packages (datasets) in CKAN (unsorted)"""
     client = await get_client()
     return await client._make_request(
@@ -217,7 +122,7 @@ async def ckan_package_list(limit: int = 100, offset: int = 0) -> List[str]:
 
 
 @mcp.tool()
-async def ckan_package_show(id: str, full: bool = False) -> Dict[str, Any]:
+async def ckan_package_show(id: str, full: bool = False) -> dict[str, Any]:
     """Get details of a specific package/dataset.
 
     Returns a trimmed summary by default; pass `full=True` for the raw CKAN object.
@@ -230,12 +135,12 @@ async def ckan_package_show(id: str, full: bool = False) -> Dict[str, Any]:
 @mcp.tool()
 async def ckan_package_search(
     q: str = "*:*",
-    fq: Optional[str] = None,
-    sort: Optional[str] = None,
+    fq: str | None = None,
+    sort: str | None = None,
     rows: int = 10,
     start: int = 0,
     full: bool = False,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """Search for packages using queries.
 
     Returns `{count, results}` with trimmed package summaries by default; pass
@@ -249,23 +154,20 @@ async def ckan_package_search(
     return {
         "count": result.get("count"),
         "results": [
-            _summarize_package(pkg, include_resources=False)
-            for pkg in result.get("results", [])
+            _summarize_package(pkg, include_resources=False) for pkg in result.get("results", [])
         ],
     }
 
 
 @optional_tool
-async def ckan_organization_list(all_fields: bool = False) -> List[Any]:
+async def ckan_organization_list(all_fields: bool = False) -> list[Any]:
     """Get list of all organizations"""
     client = await get_client()
-    return await client._make_request(
-        "GET", "organization_list", params={"all_fields": all_fields}
-    )
+    return await client._make_request("GET", "organization_list", params={"all_fields": all_fields})
 
 
 @optional_tool
-async def ckan_organization_show(id: str, include_datasets: bool = False) -> Dict[str, Any]:
+async def ckan_organization_show(id: str, include_datasets: bool = False) -> dict[str, Any]:
     """Get details of a specific organization"""
     client = await get_client()
     return await client._make_request(
@@ -276,16 +178,14 @@ async def ckan_organization_show(id: str, include_datasets: bool = False) -> Dic
 
 
 @optional_tool
-async def ckan_group_list(all_fields: bool = False) -> List[Any]:
+async def ckan_group_list(all_fields: bool = False) -> list[Any]:
     """Get list of all groups"""
     client = await get_client()
-    return await client._make_request(
-        "GET", "group_list", params={"all_fields": all_fields}
-    )
+    return await client._make_request("GET", "group_list", params={"all_fields": all_fields})
 
 
 @optional_tool
-async def ckan_tag_list(vocabulary_id: Optional[str] = None) -> List[Any]:
+async def ckan_tag_list(vocabulary_id: str | None = None) -> list[Any]:
     """Get list of all tags"""
     client = await get_client()
     params = {"vocabulary_id": vocabulary_id} if vocabulary_id else {}
@@ -293,21 +193,21 @@ async def ckan_tag_list(vocabulary_id: Optional[str] = None) -> List[Any]:
 
 
 @optional_tool
-async def ckan_resource_show(id: str) -> Dict[str, Any]:
+async def ckan_resource_show(id: str) -> dict[str, Any]:
     """Get details of a specific resource"""
     client = await get_client()
     return await client._make_request("GET", "resource_show", params={"id": id})
 
 
 @optional_tool
-async def ckan_site_read() -> Dict[str, Any]:
+async def ckan_site_read() -> dict[str, Any]:
     """Get site information and statistics"""
     client = await get_client()
     return await client._make_request("GET", "site_read")
 
 
 @optional_tool
-async def ckan_status_show() -> Dict[str, Any]:
+async def ckan_status_show() -> dict[str, Any]:
     """Get CKAN site status and version information"""
     client = await get_client()
     return await client._make_request("GET", "status_show")
@@ -316,12 +216,12 @@ async def ckan_status_show() -> Dict[str, Any]:
 @mcp.tool()
 async def ckan_datastore_search(
     resource_id: str,
-    q: Optional[str] = None,
-    limit: Optional[int] = None,
-    offset: Optional[int] = None,
-    sort: Optional[str] = None,
-    fields: Optional[List[str]] = None,
-) -> Dict[str, Any]:
+    q: str | None = None,
+    limit: int | None = None,
+    offset: int | None = None,
+    sort: str | None = None,
+    fields: list[str] | None = None,
+) -> dict[str, Any]:
     """Search records in a dataset"""
     client = await get_client()
     data = {
@@ -339,8 +239,9 @@ async def ckan_datastore_search(
 
 # --- Data Analysis Tools ---
 
+
 @mcp.tool()
-async def ckan_resource_preview(resource_id: str, rows: int = 5) -> Dict[str, Any]:
+async def ckan_resource_preview(resource_id: str, rows: int = 5) -> dict[str, Any]:
     """
     Preview the content of a resource.
     Tries to fetch data via DataStore first, falling back to resource metadata.
@@ -353,9 +254,7 @@ async def ckan_resource_preview(resource_id: str, rows: int = 5) -> Dict[str, An
     except ToolError:
         # DataStore not active for this resource; return its metadata instead.
         # A fuller implementation might download and parse the CSV here.
-        return await client._make_request(
-            "GET", "resource_show", params={"id": resource_id}
-        )
+        return await client._make_request("GET", "resource_show", params={"id": resource_id})
 
 
 @mcp.tool()
@@ -364,32 +263,32 @@ async def ckan_read_web_document(url: str, max_chars: int = MAX_DOCUMENT_CHARS) 
     Fetch a webpage and return its content as clean Markdown.
     Crucial for reading 'More Information' documentation links or bylaws associated with datasets.
 
-    Outbound requests pass an SSRF guard (`document_scraper.is_safe_url`): only public
+    Outbound requests pass an SSRF guard (`documents.is_safe_url`): only public
     http(s) hosts are fetched. Set CKAN_DOC_ALLOWED_HOSTS to restrict to an allowlist.
     """
-    if not document_scraper.is_safe_url(url):
+    if not documents.is_safe_url(url):
         return (
             "Refused to fetch this URL: it does not resolve to a public http(s) address "
-            "(SSRF guard). Set CKAN_DOC_ALLOWED_HOSTS to permit specific hosts."
+            "(SSRF guard). CKAN_DOC_ALLOWED_HOSTS can further restrict public hosts."
         )
-    timeout = aiohttp.ClientTimeout(total=DEFAULT_TIMEOUT)
-    headers = {"User-Agent": "MCP-CKAN-Server"}
     try:
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.get(url, headers=headers) as response:
-                response.raise_for_status()
-                html = await response.text()
-    except Exception as e:
-        return f"Failed to fetch or parse the document: {str(e)}"
+        async with documents.create_safe_session() as session:
+            content_type, body = await documents.fetch_document(session, url)
+        if content_type == "pdf":
+            md = documents.pdf_to_text(body)
+        else:
+            md = documents.html_to_markdown(body)
+    except Exception as exc:
+        return f"Failed to fetch or parse the document: {exc}"
 
-    md = document_scraper.html_to_markdown(html)
-    if len(md) > max_chars:
-        return md[:max_chars] + "\n\n...[Content truncated due to length]..."
+    limit = max(1, min(max_chars, MAX_DOCUMENT_CHARS))
+    if len(md) > limit:
+        return md[:limit] + "\n\n...[Content truncated due to length]..."
     return md
 
 
 @mcp.tool()
-async def ckan_dataset_schema(id: str) -> Dict[str, Any]:
+async def ckan_dataset_schema(id: str) -> dict[str, Any]:
     """
     Get the schema/structure of a dataset.
     Returns a summary of resources and their fields (if available in DataStore).
@@ -397,7 +296,7 @@ async def ckan_dataset_schema(id: str) -> Dict[str, Any]:
     client = await get_client()
     package = await client._make_request("GET", "package_show", params={"id": id})
 
-    schema_info: Dict[str, Any] = {
+    schema_info: dict[str, Any] = {
         "dataset_title": package.get("title"),
         "resources": [],
     }
@@ -429,11 +328,12 @@ async def ckan_dataset_schema(id: str) -> Dict[str, Any]:
 
 # --- Grounded Document Knowledge ---
 
-async def _dataset_doc_seeds(dataset_id: str) -> List[str]:
+
+async def _dataset_doc_seeds(dataset_id: str) -> list[str]:
     """Discover the authoritative document URLs referenced by a dataset."""
     client = await get_client()
     package = await client._make_request("GET", "package_show", params={"id": dataset_id})
-    seeds = document_scraper.discover_doc_urls(package)
+    seeds = documents.discover_doc_urls(package)
     if not seeds:
         raise ToolError(
             f"Dataset '{dataset_id}' has no external document links "
@@ -444,8 +344,8 @@ async def _dataset_doc_seeds(dataset_id: str) -> List[str]:
 
 @mcp.tool()
 async def ckan_fetch_dataset_docs(
-    dataset_id: str, max_pages: int = document_scraper.DEFAULT_MAX_PAGES
-) -> Dict[str, Any]:
+    dataset_id: str, max_pages: int = documents.DEFAULT_MAX_PAGES
+) -> dict[str, Any]:
     """
     Fetch the authoritative documentation linked from a dataset's metadata
     (information_url + links in notes), crawling in-scope subpages.
@@ -454,7 +354,7 @@ async def ckan_fetch_dataset_docs(
     reading. Use this for legal/bylaw follow-up questions instead of guessing.
     """
     seeds = await _dataset_doc_seeds(dataset_id)
-    pages = await document_scraper.gather_dataset_pages(seeds, max_pages=max_pages)
+    pages = await documents.gather_dataset_pages(seeds, max_pages=max_pages)
     return {
         "dataset_id": dataset_id,
         "seed_urls": seeds,
@@ -470,8 +370,8 @@ async def ckan_search_dataset_docs(
     dataset_id: str,
     query: str,
     k: int = 5,
-    max_pages: int = document_scraper.DEFAULT_MAX_PAGES,
-) -> Dict[str, Any]:
+    max_pages: int = documents.DEFAULT_MAX_PAGES,
+) -> dict[str, Any]:
     """
     Search a dataset's linked documentation for passages relevant to `query`.
 
@@ -481,18 +381,18 @@ async def ckan_search_dataset_docs(
     returned, say the source does not cover it.
     """
     seeds = await _dataset_doc_seeds(dataset_id)
-    pages = await document_scraper.gather_dataset_pages(seeds, max_pages=max_pages)
-    sections = document_scraper.rank_sections(pages, query, k=k)
+    pages = await documents.gather_dataset_pages(seeds, max_pages=max_pages)
+    sections = documents.rank_sections(pages, query, k=k)
     return {
         "dataset_id": dataset_id,
         "query": query,
         "seed_urls": seeds,
-        "results": [
-            {"url": s.url, "heading": s.heading, "text": s.text} for s in sections
-        ],
+        "results": [{"url": s.url, "heading": s.heading, "text": s.text} for s in sections],
     }
 
+
 # --- Resources ---
+
 
 @mcp.resource("ckan://api/docs")
 def get_api_docs() -> str:
@@ -535,7 +435,15 @@ def get_config() -> str:
 
 def main() -> None:
     """Console-script / module entry point."""
-    mcp.run()
+    transport = os.getenv("MCP_TRANSPORT", "stdio").strip().lower()
+    if transport == "stdio":
+        mcp.run(transport="stdio", show_banner=False)
+        return
+    if transport not in {"http", "sse"}:
+        raise ValueError("MCP_TRANSPORT must be one of: stdio, http, sse")
+    host = os.getenv("MCP_HOST", "127.0.0.1")
+    port = int(os.getenv("MCP_PORT", "8000"))
+    mcp.run(transport=transport, host=host, port=port, show_banner=False)
 
 
 if __name__ == "__main__":

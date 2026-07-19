@@ -3,7 +3,7 @@ name = "ckan-mcp-server"
 version = "1.2.0"
 description = "A Model Context Protocol (MCP) server for the CKAN API that enables browsing and managing CKAN data portals through MCP-compatible clients."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 authors = [
     { name = "Ruchir Attri", email = "ruchir.attri99@gmail.com" },
     { name = "Ondics GmbH", email = "info@ondics.de" },
@@ -14,25 +14,25 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
-    "aiohttp>=3.9",
-    "beautifulsoup4>=4.12",
-    "certifi",
-    "fastmcp>=2.0",
-    "markdownify>=0.11",
-    "pypdf>=4.0",
-    "python-dotenv>=1.0",
-    "rank-bm25>=0.2",
+    "aiohttp>=3.14.1,<4",
+    "beautifulsoup4>=4.15.0,<5",
+    "certifi>=2026.6.17",
+    "fastmcp>=3.4.4,<4",
+    "markdownify>=1.2.3,<2",
+    "pypdf>=6.14.2,<7",
+    "rank-bm25>=0.2.2,<0.3",
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0",
-    "pytest-asyncio>=0.23",
-    "aioresponses>=0.7",
+    "aioresponses>=0.7.9,<0.8",
+    "pytest>=9.1.1,<10",
+    "pytest-asyncio>=1.4.0,<2",
+    "ruff>=0.15.22,<0.16",
 ]
 
 [project.scripts]
-ckan-mcp-server = "mcp_ckan_server:main"
+ckan-mcp-server = "ckan_mcp_server.server:main"
 
 [project.urls]
 Homepage = "https://github.com/ruchir321/ckan-mcp-server"
@@ -44,7 +44,7 @@ requires = ["setuptools>=61.0"]
 build-backend = "setuptools.build_meta"
 
 [tool.setuptools]
-py-modules = ["mcp_ckan_server", "document_scraper"]
+packages = ["ckan_mcp_server"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -53,3 +53,13 @@ python_files = ["test_ckan_*.py", "test_web_document.py"]
 
 [tool.uv]
 package = true
+
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.ruff.format]
+quote-style = "double"
