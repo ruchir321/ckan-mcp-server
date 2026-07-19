@@ -27,10 +27,11 @@ dist-ssr
 
 .env
 
-__pycache__
+__pycache__/
+.pytest_cache/
+.venv/
+*.egg-info/
 
-uv.lock
-
-ckan_mcp_server.egg-info
+.duo/
 
 docs/*

@@ -1,47 +1,26 @@
-#
-# Makefile-Tools
-# Ondics, 2025
-# Idea: https://github.com/runekaagaard/mcp-alchemy/blob/main/Makefile
-#
-
-# SHELL := /bin/bash
-# .SHELLFLAGS := -ec
-
-# Use env-File for PYPI_API_TOKEN
-include backend/.env
-
-PROJECT := $(shell grep '^name = ' backend/pyproject.toml | cut -d '"' -f2)
-PACKAGE := $(shell echo $(PROJECT) | tr '-' '_')
-VERSION := $(shell grep '^version = ' backend/pyproject.toml | cut -d '"' -f2)
-
-# help-systematik
-# build muss phony sein (forcierter build), weil es 
-# als verzeichnis existiert und sonst nie gebaut werden würde
-.PHONY: help build
+.PHONY: help sync lint format-check test check docker-build
 
 help:
-	@echo "# Docker-Helferlein"
-	@echo "# Ondics, 2025"
-	@echo Befehle: make ...
-	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+	@echo "sync          Install locked dependencies"
+	@echo "lint          Run Ruff lint checks"
+	@echo "format-check  Verify Ruff formatting"
+	@echo "test          Run the offline test suite"
+	@echo "check         Run lint, formatting, and tests"
+	@echo "docker-build  Build the production image"
 
-.DEFAULT_GOAL := help
+sync:
+	uv sync --all-extras --frozen
 
-build: ## Build image with Publisher
-	cd backend && docker compose build
+lint:
+	uv run ruff check .
 
-bash: ## Start bash in container
-	cd backend && docker compose run --rm pypipublisher bash
+format-check:
+	uv run ruff format --check .
 
-publish-pypi: ## Publish to PyPi
-	${MAKE} build
-	cd backend && docker compose run --rm pypipublisher bash -c "\
-		uv build && \
-		uv lock && \
-		uv publish --token ${PYPI_API_TOKEN} "
-	
+test:
+	uv run pytest -q
 
-debug-constants: ## Debug constants
-	@echo "PROJECT='$(PROJECT)'"
-	@echo "PACKAGE='$(PACKAGE)'"
-	@echo "VERSION='$(VERSION)'"
+check: lint format-check test
+
+docker-build:
+	docker build -t ckan-mcp-server .

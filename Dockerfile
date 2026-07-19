@@ -1,35 +1,27 @@
 
-# Dockerfile for publishing to PyPi 
-#
-# (C) Ondics GmbH
-#
+FROM ghcr.io/astral-sh/uv:0.9.10 AS uv
 
-FROM python:3.14-slim-trixie
+FROM python:3.13.11-slim-trixie
 
-ENV TZ="Europe/Berlin"
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-RUN apt-get update && apt-get install -y \
-    vim \
-    jq \
-    git \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
+COPY --from=uv /uv /uvx /bin/
 
-# we need git
+RUN groupadd --system app \
+    && useradd --system --gid app --home-dir /app app \
+    && mkdir -p /app \
+    && chown app:app /app
+
 WORKDIR /app
-RUN git init && \
-    git config user.name ondics && \
-    git config user.email info@ondics.de    
+COPY --chown=app:app pyproject.toml uv.lock README.md LICENSE ./
+COPY --chown=app:app ckan_mcp_server ./ckan_mcp_server
 
-# ... and uv
-RUN pip install --no-cache-dir uv
+USER app
+RUN uv sync --frozen --no-dev
 
-# these files are required to be published
-COPY README.md .
-COPY mcp_ckan_server.py .
-COPY requirements.txt .
-COPY pyproject.toml .
-COPY LICENSE .
-RUN pip install -r requirements.txt
-
+ENTRYPOINT ["ckan-mcp-server"]
 

@@ -1,32 +1,24 @@
+FROM ghcr.io/astral-sh/uv:0.9.10 AS uv
 
-# Dockerfile for CKAN-MCP tests
-#
-# (C) Ondics GmbH
-#
+FROM python:3.13.11-slim-trixie
 
-FROM python:3.13.4-slim-bookworm
+ENV PATH="/app/.venv/bin:$PATH" \
+    PYTHONDONTWRITEBYTECODE=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-ENV TZ="Europe/Berlin"
+COPY --from=uv /uv /uvx /bin/
+RUN groupadd --system app \
+    && useradd --system --gid app --home-dir /app app \
+    && mkdir -p /app \
+    && chown app:app /app
 
-RUN apt-get update && apt-get install -y \
-    vim \
-    jq \
-    git \
-    procps \
-    && rm -rf /var/lib/apt/lists/*
+WORKDIR /app
+COPY --chown=app:app pyproject.toml uv.lock README.md LICENSE ./
+COPY --chown=app:app ckan_mcp_server ./ckan_mcp_server
+COPY --chown=app:app tests ./tests
 
+USER app
+RUN uv sync --all-extras --frozen
 
-
-WORKDIR /app/tests
-
-COPY tests/requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY tests/ .
-COPY *.py /app/
-COPY *.txt /app/
-COPY *.md /app/
-COPY *.toml /app/
-COPY .env /app/
-CMD ["python", "test.py"]
-
+CMD ["uv", "run", "pytest", "-q"]

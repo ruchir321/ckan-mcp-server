@@ -1,2 +1,9 @@
 .venv
 *.log
+.git
+.duo
+.pytest_cache
+__pycache__
+*.egg-info
+.env
+.env.*

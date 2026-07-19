@@ -1,18 +1,5 @@
 services:
-  ckan-mcp-server:
-    build: 
-      dockerfile: tests/Dockerfile
+  tests:
+    build:
       context: ..
-    
-    env_file: .env
-    environment:
-      - CKAN_URL=${CKAN_URL}
-      - CKAN_API_KEY=${CKAN_API_KEY}
-      - LOG_LEVEL=${LOG_LEVEL:-INFO}
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
-    volumes:
-      - ../:/app
-    # working_dir: /app
-    # command: python mcp_ckan_server.py
-    stdin_open: true
-    tty: true
+      dockerfile: tests/Dockerfile

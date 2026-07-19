@@ -1,29 +1,21 @@
 services:
-  # pypipublisher:
-  #   build: .
-  #   env_file: .env
-  #   stdin_open: true
-  #   tty: true
-  # test: 
-  #   entrypoint: ["python", "test.py"]
-  #   build:
-  #     dockerfile: ../Dockerfile
-  #     context: tests
   ckan-mcp-server-stdio:
-    profiles:
-      - stdio
+    profiles: [stdio]
     build: .
-    env_file: .env
+    environment:
+      CKAN_URL: ${CKAN_URL}
+      CKAN_API_KEY: ${CKAN_API_KEY:-}
     stdin_open: true
     tty: true
 
-    entrypoint: ["python", "mcp_ckan_server.py"]
   ckan-mcp-server:
-    profiles:
-      - sse
+    profiles: [http]
     build: .
-    env_file: .env
+    environment:
+      CKAN_URL: ${CKAN_URL}
+      CKAN_API_KEY: ${CKAN_API_KEY:-}
+      MCP_TRANSPORT: http
+      MCP_HOST: 0.0.0.0
+      MCP_PORT: 8000
     ports:
       - "8000:8000"
-
-    entrypoint: ["python", "mcp_ckan_server.py","--transport", "sse","--port","8000","--host","0.0.0.0"]

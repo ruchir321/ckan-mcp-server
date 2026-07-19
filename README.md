@@ -26,11 +26,9 @@ portals while reusing the same server.
 ## Requirements
 
 - Python 3.13 or higher
-- `uv` (recommended) or `pip`
+- [`uv`](https://docs.astral.sh/uv/)
 
 ## Installation
-
-### Using uv (Recommended)
 
 This project uses `uv` for dependency management. `uv` will automatically create and manage a virtual environment for you.
 
@@ -41,22 +39,6 @@ This project uses `uv` for dependency management. `uv` will automatically create
 2.  Sync dependencies (this creates the `.venv` folder):
     ```bash
     uv sync
-    ```
-
-### Using pip
-
-If you prefer `pip`, you should manually create a virtual environment to avoid conflicts and to ensure the IDE integration works as expected.
-
-1.  Create a virtual environment:
-    ```bash
-    python -m venv .venv
-    ```
-2.  Activate the virtual environment:
-    -   **Linux/macOS**: `source .venv/bin/activate`
-    -   **Windows**: `.venv\Scripts\activate`
-3.  Install Python dependencies:
-    ```bash
-    pip install -r requirements.txt
     ```
 
 ## Configuration
@@ -75,18 +57,14 @@ export CKAN_URL="https://demo.ckan.org"
 export CKAN_API_KEY="your-api-key-here"
 ```
 
-You can also copy `.env.example` to `.env` and set your configuration there.
+The server reads the process environment only; it does not implicitly load dotenv files.
 
 ## Usage
 
 ### Running the server directly
 
 ```bash
-# With uv
-uv run mcp_ckan_server.py
-
-# With python
-python mcp_ckan_server.py
+uv run ckan-mcp-server
 ```
 
 ### Using Docker
@@ -102,10 +80,6 @@ docker run -e CKAN_URL="https://demo.ckan.org" -e CKAN_API_KEY="your-key" ckan-m
 ### Using Docker Compose
 
 ```bash
-# Copy environment file and configure
-cp .env.example .env
-# Edit .env with your settings
-
 # Run the server
 docker-compose up
 ```
@@ -118,24 +92,29 @@ To use this server with a coding agent IDE (like Cursor, Windsurf, or others sup
 
 Most IDEs allow you to configure MCP servers in a JSON file or settings UI. Use the following command:
 
--   **Command**: `uv` (or `python` if you installed via pip)
+-   **Command**: `uv`
 -   **Args**:
-    -   `run` (if using uv)
-    -   `/absolute/path/to/ckan-mcp-server/mcp_ckan_server.py`
+    -   `run`
+    -   `--directory`
+    -   `/absolute/path/to/ckan-mcp-server`
+    -   `ckan-mcp-server`
 -   **Environment Variables**:
     -   `CKAN_URL`: `https://ckan0.cf.opendata.inter.prod-toronto.ca` (or your target CKAN instance)
 
 ### Example: Claude Desktop / Generic Config
 
-Use the absolute path to the Python executable in your virtual environment to ensure all dependencies are found.
+Point `uv` at the project directory so it uses the locked environment.
 
 ```json
 {
   "mcpServers": {
     "ckan-mcp-server": {
-      "command": "/absolute/path/to/ckan-mcp-server/.venv/bin/python",
+      "command": "uv",
       "args": [
-        "/absolute/path/to/ckan-mcp-server/mcp_ckan_server.py"
+        "run",
+        "--directory",
+        "/absolute/path/to/ckan-mcp-server",
+        "ckan-mcp-server"
       ],
       "env": {
         "CKAN_URL": "https://ckan0.cf.opendata.inter.prod-toronto.ca",
