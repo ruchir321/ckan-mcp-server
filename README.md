@@ -138,7 +138,14 @@ cost — small. Set `CKAN_EXPOSE_ALL_TOOLS=1` to register the additional endpoin
 
 **Data Analysis**
 -   `ckan_resource_preview`: Preview DataStore rows; return resource metadata when DataStore is unavailable (no CSV download fallback)
--   `ckan_datastore_search`: Search DataStore records with text queries, field selection, sorting and pagination (no arbitrary SQL)
+-   `ckan_datastore_search`: Search DataStore records with text queries, exact field filters, field selection, sorting and pagination (no arbitrary SQL)
+
+DataStore `q` uses the portal's full-text index. A value visible in a preview may
+return no text-search matches when the index does not cover that field. Use
+`filters={"FIELD_NAME": "value"}` for exact field matches, with multiple fields
+combined using AND. Keep `q` omitted when only exact filters are needed. Filtering
+preserves CKAN's returned records and counts; it does not aggregate or deduplicate
+rows. See the [CKAN DataStore search reference](https://docs.ckan.org/en/2.11/maintaining/datastore.html#ckanext.datastore.logic.action.datastore_search).
 
 **Grounded Documentation** — read the authoritative documents linked from a dataset's metadata
 (`information_url` + links in `notes`), so the agent can answer legal/bylaw follow-ups from a cited

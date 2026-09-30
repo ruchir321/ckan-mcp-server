@@ -31,7 +31,8 @@ for rules and definitions.
 1. **Discover** — `ckan_package_search(q=...)` to find candidate datasets; skim titles/notes.
 2. **Inspect** — `ckan_dataset_schema(id=...)` for fields, or `ckan_package_show(id=...)` for
    the full record (resources, `information_url`).
-3. **Query / preview** — `ckan_datastore_search(resource_id=...)` for SQL-like filtering, or
+3. **Query / preview** — `ckan_datastore_search(resource_id=..., filters={"FIELD": "value"})`
+   for exact field matches, or
    `ckan_resource_preview(resource_id=...)` for the first rows.
 4. **Ground** — for any rule/definition/legal follow-up, pull the source document with
    `ckan_search_dataset_docs(dataset_id, query)` and answer from the cited passage.
@@ -66,6 +67,14 @@ each step needs. To answer a multi-faceted question, chain searches:
 
 ## Notes
 
+- DataStore `q` is full-text search, not SQL or an exact field filter. On Toronto
+  resources, a preview value can exist even when `q` returns zero matches. Inspect
+  the schema and use `filters` with the exact field name and value; omit `q` when
+  it is not needed. Multiple filter fields use AND. Do not interpret an empty
+  text-search result as proof that the underlying rows are absent.
+- Returned rows are source records, not guaranteed unique by a chosen grouping
+  key. Preserve `_id` while inspecting repeated keys and check the dataset's
+  documentation before aggregating counts or removing rows.
 - This Skill carries the Toronto domain expertise; the MCP server stays a lean, portable tool
   layer. Keep portal-agnostic mechanics (HTTP, pagination) in the tools, and Toronto specifics here.
 - The grounded-doc tools only fetch public hosts (SSRF guard). If a dataset's `information_url`

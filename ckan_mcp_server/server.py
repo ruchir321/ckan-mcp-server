@@ -230,8 +230,15 @@ async def ckan_datastore_search(
     offset: int | None = None,
     sort: str | None = None,
     fields: list[str] | None = None,
+    filters: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Search records in a dataset"""
+    """Search DataStore records with pagination, projection, and exact field filters.
+
+    `q` is CKAN full-text search and depends on the portal's search index. Use
+    `filters={"FIELD_NAME": "value"}` for exact values in named fields; multiple
+    fields are combined with AND. A zero-result text query does not establish
+    that a value is absent from the resource. No arbitrary SQL is supported.
+    """
     client = await get_client()
     data = {
         "resource_id": resource_id,
@@ -240,6 +247,7 @@ async def ckan_datastore_search(
         "offset": offset,
         "sort": sort,
         "fields": fields,
+        "filters": filters,
     }
     # Remove None values so optional params are omitted.
     data = {k: v for k, v in data.items() if v is not None}

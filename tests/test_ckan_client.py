@@ -160,6 +160,48 @@ async def test_mcp_discovery_advertises_read_only_tools_and_calls_search():
             assert result.data == {"count": 0, "results": []}
 
 
+@pytest.mark.parametrize(
+    "filters",
+    [None, {}, {"PREMISES_TYPE": "Commercial"}, {"REPORT_YEAR": 2024, "DIVISION": "D11"}],
+)
+async def test_mcp_datastore_exact_filters_preserve_request_and_source_rows(filters):
+    # Repeated grouping keys remain separate source rows; filtering is not aggregation.
+    payload = {
+        "total": 2,
+        "records": [{"_id": 1, "COUNT_": "2"}, {"_id": 2, "COUNT_": "5"}],
+    }
+    args = {"resource_id": "sample-resource", "limit": 5, "fields": ["_id", "COUNT_"]}
+    if filters is not None:
+        args["filters"] = filters
+    with aioresponses() as mocked:
+        mocked.post(action_url("datastore_search"), payload={"success": True, "result": payload})
+        async with Client(server.mcp) as client:
+            result = await client.call_tool("ckan_datastore_search", args)
+    assert not result.is_error
+    assert result.data == payload
+    request = next(iter(mocked.requests.values()))[0]
+    assert request.kwargs["json"] == args
+
+
+async def test_mcp_datastore_text_query_is_not_rewritten_or_retried():
+    args = {
+        "resource_id": "sample-resource",
+        "q": "Commercial",
+        "filters": {"REPORT_YEAR": 2024},
+        "limit": 5,
+    }
+    payload = {"total": 0, "records": []}
+    with aioresponses() as mocked:
+        mocked.post(action_url("datastore_search"), payload={"success": True, "result": payload})
+        async with Client(server.mcp) as client:
+            result = await client.call_tool("ckan_datastore_search", args)
+    assert not result.is_error
+    assert result.data == payload
+    requests = next(iter(mocked.requests.values()))
+    assert len(requests) == 1
+    assert requests[0].kwargs["json"] == args
+
+
 async def test_streamable_http_initialization_and_tool_discovery():
     # Exercise the real ASGI endpoint without opening a port or exposing a server.
     app = server.mcp.http_app(stateless_http=True, json_response=True)
