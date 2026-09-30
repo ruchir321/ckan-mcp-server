@@ -1,7 +1,7 @@
 
 # CKAN MCP Server
 
-A Model Context Protocol (MCP) server for the CKAN API that enables browsing and managing CKAN data portals through MCP-compatible clients.
+A read-only Model Context Protocol (MCP) server for discovering and querying CKAN data portals through MCP-compatible clients. It does not create, update, or delete portal data.
 
 ## What is this?
 
@@ -9,7 +9,7 @@ This MCP server bridges the gap between manual data fetching and automated analy
 1.  **Discover Data**: Search and filter datasets using natural language.
 2.  **Understand Structure**: Automatically retrieve schemas and field definitions.
 3.  **Preview Content**: Peek into data resources without downloading the entire file.
-4.  **Analyze**: Perform SQL-like queries on DataStore-enabled resources.
+4.  **Analyze**: Search, sort and paginate records in DataStore-enabled resources.
 
 It is designed to be dropped into any MCP-compatible IDE or agent to instantly give it access to the wealth of open data available on CKAN portals.
 
@@ -17,11 +17,11 @@ It is designed to be dropped into any MCP-compatible IDE or agent to instantly g
 
 The **MCP server is portal-agnostic** — point `CKAN_URL` at any CKAN instance and the tools work.
 Portal-specific *domain knowledge* (which datasets matter, how to chain searches, the grounding
-discipline for citing source documents) lives separately in a **Claude Agent Skill**, keeping the
+discipline for citing source documents) lives separately in an **Agent Skill**, keeping the
 server lean and reusable. The reference Skill ships in this repo:
 [`skills/toronto-open-data/`](skills/toronto-open-data/SKILL.md) for the City of Toronto Open Data
-portal. Copy or symlink it into `~/.claude/skills/` to use it; author similar Skills for other
-portals while reusing the same server.
+portal. Install it in your client’s supported skills location, or bundle it using Plugin Creator
+(see below). Author similar skills for other portals while reusing the same server.
 
 ## Requirements
 
@@ -38,7 +38,7 @@ This project uses `uv` for dependency management. `uv` will automatically create
     ```
 2.  Sync dependencies (this creates the `.venv` folder):
     ```bash
-    uv sync
+    uv sync --all-extras --frozen
     ```
 
 ## Configuration
@@ -46,7 +46,7 @@ This project uses `uv` for dependency management. `uv` will automatically create
 Set the following environment variables:
 
 -   `CKAN_URL`: The base URL of your CKAN portal (e.g. `https://demo.ckan.org`)
--   `CKAN_API_KEY`: (Optional) Your CKAN API key for write operations
+-   `CKAN_API_KEY`: (Optional) A CKAN API key for reading protected datasets; not needed for Toronto public data
 -   `CKAN_DOC_ALLOWED_HOSTS`: (Optional) Comma-separated allowlist of hosts the document tools may fetch. By default only public http(s) hosts are allowed and private/loopback/link-local addresses are blocked (SSRF protection); set this to restrict fetches to specific hosts.
 -   `CKAN_EXPOSE_ALL_TOOLS`: (Optional) Set to `1` to register the lower-value list/health endpoints in addition to the default lean tool set.
 
@@ -54,7 +54,6 @@ Example:
 
 ```bash
 export CKAN_URL="https://demo.ckan.org"
-export CKAN_API_KEY="your-api-key-here"
 ```
 
 The server reads the process environment only; it does not implicitly load dotenv files.
@@ -64,7 +63,7 @@ The server reads the process environment only; it does not implicitly load doten
 ### Running the server directly
 
 ```bash
-uv run ckan-mcp-server
+CKAN_URL=https://ckan0.cf.opendata.inter.prod-toronto.ca uv run --frozen ckan-mcp-server
 ```
 
 ### Using Docker
@@ -74,14 +73,14 @@ uv run ckan-mcp-server
 docker build -t ckan-mcp-server .
 
 # Run with environment variables
-docker run -e CKAN_URL="https://demo.ckan.org" -e CKAN_API_KEY="your-key" ckan-mcp-server
+docker run --rm -i -e CKAN_URL="https://demo.ckan.org" ckan-mcp-server
 ```
 
 ### Using Docker Compose
 
 ```bash
-# Run the server
-docker-compose up
+# Run an interactive stdio instance (only when an existing instance is not running)
+CKAN_URL=https://demo.ckan.org docker compose --profile stdio run --rm ckan-mcp-server-stdio
 ```
 
 ## IDE Integration
@@ -117,8 +116,7 @@ Point `uv` at the project directory so it uses the locked environment.
         "ckan-mcp-server"
       ],
       "env": {
-        "CKAN_URL": "https://ckan0.cf.opendata.inter.prod-toronto.ca",
-        "CKAN_API_KEY": "your-api-key-here"
+        "CKAN_URL": "https://ckan0.cf.opendata.inter.prod-toronto.ca"
       }
     }
   }
@@ -139,8 +137,8 @@ cost — small. Set `CKAN_EXPOSE_ALL_TOOLS=1` to register the additional endpoin
 -   `ckan_dataset_schema`: Get the schema/structure of a dataset (resources and fields)
 
 **Data Analysis**
--   `ckan_resource_preview`: Preview the content of a resource (first N rows)
--   `ckan_datastore_search`: Search and query DataStore tables (SQL-like capabilities)
+-   `ckan_resource_preview`: Preview DataStore rows; return resource metadata when DataStore is unavailable (no CSV download fallback)
+-   `ckan_datastore_search`: Search DataStore records with text queries, field selection, sorting and pagination (no arbitrary SQL)
 
 **Grounded Documentation** — read the authoritative documents linked from a dataset's metadata
 (`information_url` + links in `notes`), so the agent can answer legal/bylaw follow-ups from a cited
@@ -158,12 +156,97 @@ source of truth instead of guessing.
 -   `ckan_site_read`: Site information
 -   `ckan_status_show`: Status and version information
 
+All tools advertise `readOnlyHint=true`, `destructiveHint=false`,
+`idempotentHint=true` and `openWorldHint=true`. These describe tool behavior;
+they do not provide authentication or enforce permissions.
+
 ## Resources
 
 The server also provides the following resources:
 
 -   `ckan://api/docs`: API documentation
 -   `ckan://config`: Server configuration
+
+## Development and transport validation
+
+```bash
+uv sync --all-extras --frozen
+make check
+```
+
+The default suite is offline and includes MCP discovery/calls and Streamable HTTP
+initialization through an in-process ASGI client. No listening socket is opened.
+`tests/test_web_document_tool.py` is a legacy manual live-network probe, excluded
+from the offline suite; passing offline tests does not establish live portal health.
+
+The default transport is stdio. `MCP_TRANSPORT=http` selects Streamable HTTP at
+`/mcp`; `MCP_HOST` defaults to `127.0.0.1` and `MCP_PORT` to `8000`.
+`MCP_TRANSPORT=sse` remains available for legacy clients. Check running services
+and choose an unused port before starting HTTP. The Compose HTTP profile publishes
+port 8000 on all host interfaces and has no application authentication; review its
+binding and access controls before choosing that profile.
+
+## Dependency maintenance
+
+Direct runtime and development requirements were checked against official PyPI
+metadata on 2026-09-30. Compatible updates applied:
+
+| Package | Previous lock | Updated lock | Upstream reference |
+| --- | --- | --- | --- |
+| aiohttp | 3.14.1 | 3.14.3 | [Release notes](https://github.com/aio-libs/aiohttp/releases/tag/v3.14.3) |
+| FastMCP / fastmcp-slim | 3.4.4 | 3.4.7 | [Release notes](https://github.com/PrefectHQ/fastmcp/releases/tag/v3.4.7) |
+| certifi | 2026.6.17 | 2026.7.22 | [PyPI release](https://pypi.org/project/certifi/2026.7.22/) |
+| pypdf | 6.14.2 | 6.19.0 | [Release notes](https://github.com/py-pdf/pypdf/releases/tag/6.19.0) |
+
+The other direct packages were already current within their declared ranges.
+[FastMCP 4.0.10](https://pypi.org/project/fastmcp/4.0.10/) and
+[Ruff 0.16.9](https://pypi.org/project/ruff/0.16.9/) were available outside those
+ranges. Their major/runtime and lint-policy migrations are deferred to separate
+changes. The test-only aiohttp/aioresponses compatibility shim remains necessary
+with aioresponses 0.7.9; it does not alter production sessions.
+
+## ChatGPT integration: Plugin Creator next
+
+Use Plugin Creator after server validation and explicit authorization for connection
+setup. No public endpoint, tunnel, credentials, or registered plugin is supplied by
+this repository.
+
+The [official packaging workflow](https://developers.openai.com/plugins/build/plugins),
+checked on 2026-09-30, supports `@plugin-creator` in ChatGPT Work and
+`$plugin-creator` in Codex. Ask it to bundle this repository’s Toronto skill and MCP
+connection under a Toronto Open Data plugin, with a personal marketplace entry for
+testing. Confirm that Plugin Creator is available in the selected client first.
+
+For ChatGPT cloud tool access, current documentation requires a registered MCP
+connection before Plugin Creator wires that connection into the package. Supply
+the real `plugin_asdk_app...` technical ID returned by registration; never invent
+one. Follow the client’s current connection flow when that step is authorized,
+then let Plugin Creator prepare the package, review its mapping, and authorize
+installation. This is distinct from submitting a public directory plugin.
+
+An authorized connection may use a dedicated private
+[Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
+with stdio, or an approved HTTPS Streamable HTTP endpoint. This server already
+supports both transports. Choose the connection method and credential/workspace
+access before starting either route. UI labels and marketplace availability can
+vary by client; the linked workflow is documentation verification, not a verified
+setup in a particular account.
+
+## Read features proposed for a later decision
+
+These are proposals, not additional registered tools:
+
+- **Exact record filters:** add CKAN DataStore `filters` to the existing search
+  tool for precise ward, neighbourhood or entity matching. Validate the schema
+  and preserve portal-side pagination; this is the smallest useful addition.
+- **Bounded file previews:** sample CSV/GeoJSON when DataStore is unavailable.
+  Agree on byte/row limits, supported formats and provenance before adding downloads.
+- **Dataset quality summaries:** report freshness, licensing, field completeness
+  and retired-dataset warnings, distinguishing metadata claims from measured data.
+
+Keep the default eight-tool surface small; prefer an optional parameter or
+opt-in capability where appropriate. Arbitrary SQL, bulk exports and write tools
+are outside this maintenance change.
 
 ## License
 

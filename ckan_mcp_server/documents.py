@@ -5,7 +5,7 @@ CKAN datasets reference an authoritative prose/legal source in their metadata
 crawls the linked page and its in-scope subpages (HTML + PDF), and exposes the
 extracted text for grounded, citable retrieval.
 
-Design (see plan): staged retrieval, per-dataset on demand. Tier 0 = fetch pages
+Staged retrieval, per-dataset on demand. Tier 0 = fetch pages
 for in-context reading; Tier 1 = section-aware BM25 keyword retrieval. No vector
 store. An in-process TTL cache avoids re-crawling within a session.
 """
@@ -512,14 +512,21 @@ def split_sections(page: Page) -> list[Section]:
 
 def rank_sections(pages: list[Page], query: str, k: int = 5) -> list[Section]:
     """Return the top-k sections most relevant to `query` via BM25 (score > 0)."""
+    q_tokens = _tokenize(query)
+    if k <= 0 or not q_tokens:
+        return []
     sections: list[Section] = []
     for pg in pages:
         sections.extend(split_sections(pg))
     if not sections:
         return []
 
-    corpus = [_tokenize(f"{s.heading} {s.text}") for s in sections]
-    q_tokens = _tokenize(query)
+    # Punctuation-only documents have no BM25 vocabulary and would divide by zero.
+    tokenized = [(s, _tokenize(f"{s.heading} {s.text}")) for s in sections]
+    tokenized = [(s, tokens) for s, tokens in tokenized if tokens]
+    if not tokenized:
+        return []
+    sections, corpus = zip(*tokenized, strict=True)
     bm25 = BM25Okapi(corpus)
     scores = list(bm25.get_scores(q_tokens))
 

@@ -54,6 +54,14 @@ async def lifespan(_server: FastMCP):
 # Initialize FastMCP server
 mcp = FastMCP("ckan-mcp-server", lifespan=lifespan)
 
+# All registered tools retrieve remote data without changing the source portal.
+READ_ONLY_ANNOTATIONS = {
+    "readOnlyHint": True,
+    "destructiveHint": False,
+    "idempotentHint": True,
+    "openWorldHint": True,
+}
+
 
 # Low-value list/health endpoints are hidden by default to keep the advertised tool
 # surface (and the per-turn context cost of its schemas) lean. Set CKAN_EXPOSE_ALL_TOOLS=1
@@ -71,7 +79,7 @@ def optional_tool(fn):
 
     When the flag is off, the bare function is returned unregistered, so it is not
     advertised to MCP clients (but remains importable/callable in-process)."""
-    return mcp.tool()(fn) if EXPOSE_ALL_TOOLS else fn
+    return mcp.tool(annotations=READ_ONLY_ANNOTATIONS)(fn) if EXPOSE_ALL_TOOLS else fn
 
 
 # --- Response helpers ---
@@ -89,6 +97,7 @@ def _summarize_package(pkg: dict[str, Any], include_resources: bool = True) -> d
         "name": pkg.get("name"),
         "title": pkg.get("title"),
         "notes": pkg.get("notes"),
+        "information_url": pkg.get("information_url"),
         "organization": (pkg.get("organization") or {}).get("title"),
         "tags": [t.get("name") for t in pkg.get("tags", [])],
         "formats": sorted({r.get("format") for r in pkg.get("resources", []) if r.get("format")}),
@@ -121,7 +130,7 @@ async def ckan_package_list(limit: int = 100, offset: int = 0) -> list[str]:
     )
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 async def ckan_package_show(id: str, full: bool = False) -> dict[str, Any]:
     """Get details of a specific package/dataset.
 
@@ -132,7 +141,7 @@ async def ckan_package_show(id: str, full: bool = False) -> dict[str, Any]:
     return package if full else _summarize_package(package)
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 async def ckan_package_search(
     q: str = "*:*",
     fq: str | None = None,
@@ -213,7 +222,7 @@ async def ckan_status_show() -> dict[str, Any]:
     return await client._make_request("GET", "status_show")
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 async def ckan_datastore_search(
     resource_id: str,
     q: str | None = None,
@@ -240,7 +249,7 @@ async def ckan_datastore_search(
 # --- Data Analysis Tools ---
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 async def ckan_resource_preview(resource_id: str, rows: int = 5) -> dict[str, Any]:
     """
     Preview the content of a resource.
@@ -257,7 +266,7 @@ async def ckan_resource_preview(resource_id: str, rows: int = 5) -> dict[str, An
         return await client._make_request("GET", "resource_show", params={"id": resource_id})
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 async def ckan_read_web_document(url: str, max_chars: int = MAX_DOCUMENT_CHARS) -> str:
     """
     Fetch a webpage and return its content as clean Markdown.
@@ -287,7 +296,7 @@ async def ckan_read_web_document(url: str, max_chars: int = MAX_DOCUMENT_CHARS) 
     return md
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 async def ckan_dataset_schema(id: str) -> dict[str, Any]:
     """
     Get the schema/structure of a dataset.
@@ -342,7 +351,7 @@ async def _dataset_doc_seeds(dataset_id: str) -> list[str]:
     return seeds
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 async def ckan_fetch_dataset_docs(
     dataset_id: str, max_pages: int = documents.DEFAULT_MAX_PAGES
 ) -> dict[str, Any]:
@@ -365,7 +374,7 @@ async def ckan_fetch_dataset_docs(
     }
 
 
-@mcp.tool()
+@mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
 async def ckan_search_dataset_docs(
     dataset_id: str,
     query: str,
@@ -400,7 +409,7 @@ def get_api_docs() -> str:
     return """
 CKAN API Documentation Summary
 
-Base URL: Configure via CKAN_URL environment variable (Default: https://ckan0.cf.opendata.inter.prod-toronto.ca)
+Base URL: Required CKAN_URL environment variable (no implicit default)
 API Version: 3
 
 Key Endpoints:
@@ -415,7 +424,7 @@ Key Endpoints:
 - site_read: Get site information
 - status_show: Get site status
 
-Authentication: Set CKAN_API_KEY environment variable for write operations
+Authentication: Optional CKAN_API_KEY for reading protected data; tools are read-only
 
 Full documentation: https://docs.ckan.org/en/latest/api/
     """

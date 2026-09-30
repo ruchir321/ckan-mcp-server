@@ -4,9 +4,11 @@ import os
 import subprocess
 import sys
 
+import httpx
 import pytest
 from aioresponses import aioresponses
 from conftest import action_re, action_url
+from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
 from ckan_mcp_server import server
@@ -20,6 +22,7 @@ SAMPLE_PACKAGE = {
     "name": "apartment-building-evaluation",
     "title": "Apartment Building Evaluation",
     "notes": "Evaluation scores for registered apartment buildings.",
+    "information_url": "https://example.test/standards",
     "num_resources": 2,
     "metadata_modified": "2025-01-02T00:00:00",
     "organization": {"title": "Municipal Licensing & Standards", "id": "org-1"},
@@ -61,6 +64,10 @@ def test_missing_url_raises_tool_error():
         "ftp://example.test",
         "https://user:secret@example.test",
         "https://example.test/path?redirect=http://internal.test",
+        "https://example.test:invalid",
+        "https://example.test:99999",
+        "https://example.test:0",
+        "https://[invalid",
     ],
 )
 def test_invalid_ckan_base_url_raises_tool_error(url):
@@ -93,6 +100,103 @@ async def test_make_request_ckan_error_raises_tool_error():
             await server.ckan_package_show(id="missing")
 
 
+@pytest.mark.parametrize("status", [200, 404])
+async def test_api_error_preserves_ckan_message_on_http_error(status):
+    with aioresponses() as mocked:
+        mocked.get(
+            action_re("package_show"),
+            status=status,
+            payload={"success": False, "error": {"message": "Dataset not found"}},
+        )
+        with pytest.raises(ToolError, match="Dataset not found"):
+            await server.ckan_package_show(id="missing")
+
+
+@pytest.mark.parametrize(
+    "status,body,content_type,message",
+    [
+        (502, "<h1>Gateway unavailable</h1>", "text/html", "non-JSON response.*502"),
+        (200, "{broken", "application/json", "non-JSON response"),
+        (200, "[]", "application/json", "invalid response envelope"),
+        (200, "null", "application/json", "invalid response envelope"),
+        (200, '{"success": "false"}', "application/json", "invalid response envelope"),
+        (200, '{"success": true}', "application/json", "without a result"),
+        (503, '{"success": true, "result": {}}', "application/json", "HTTP error 503"),
+    ],
+)
+async def test_unexpected_response_is_a_useful_tool_error(status, body, content_type, message):
+    with aioresponses() as mocked:
+        mocked.get(action_url("status_show"), status=status, body=body, content_type=content_type)
+        with pytest.raises(ToolError, match=message):
+            await server.ckan_status_show()
+
+
+@pytest.mark.parametrize("all_fields,encoded", [(True, "true"), (False, "false")])
+async def test_optional_tool_encodes_boolean_query_parameters(all_fields, encoded):
+    with aioresponses() as mocked:
+        mocked.get(
+            action_url("organization_list") + f"?all_fields={encoded}",
+            payload={"success": True, "result": []},
+        )
+        assert await server.ckan_organization_list(all_fields=all_fields) == []
+
+
+async def test_mcp_discovery_advertises_read_only_tools_and_calls_search():
+    with aioresponses() as mocked:
+        mocked.get(
+            action_re("package_search"),
+            payload={"success": True, "result": {"count": 0, "results": []}},
+        )
+        async with Client(server.mcp) as client:
+            assert await client.ping()
+            tools = await client.list_tools()
+            for tool in tools:
+                assert tool.annotations.readOnlyHint is True
+                assert tool.annotations.destructiveHint is False
+                assert tool.annotations.idempotentHint is True
+                assert tool.annotations.openWorldHint is True
+            result = await client.call_tool("ckan_package_search", {"q": "housing"})
+            assert not result.is_error
+            assert result.data == {"count": 0, "results": []}
+
+
+async def test_streamable_http_initialization_and_tool_discovery():
+    # Exercise the real ASGI endpoint without opening a port or exposing a server.
+    app = server.mcp.http_app(stateless_http=True, json_response=True)
+    headers = {"Accept": "application/json, text/event-stream"}
+    async with app.router.lifespan_context(app):
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(app=app), base_url="http://localhost"
+        ) as client:
+            initialized = await client.post(
+                "/mcp",
+                headers=headers,
+                json={
+                    "jsonrpc": "2.0",
+                    "id": 1,
+                    "method": "initialize",
+                    "params": {
+                        "protocolVersion": "2025-03-26",
+                        "capabilities": {},
+                        "clientInfo": {"name": "offline-test", "version": "1.0"},
+                    },
+                },
+            )
+            assert initialized.status_code == 200
+            result = initialized.json()["result"]
+            assert result["serverInfo"]["name"] == "ckan-mcp-server"
+            headers["MCP-Protocol-Version"] = result["protocolVersion"]
+            discovered = await client.post(
+                "/mcp",
+                headers=headers,
+                json={"jsonrpc": "2.0", "id": 2, "method": "tools/list", "params": {}},
+            )
+            assert discovered.status_code == 200
+            tools = discovered.json()["result"]["tools"]
+            assert "ckan_package_search" in {t["name"] for t in tools}
+            assert all(t["annotations"]["readOnlyHint"] for t in tools)
+
+
 async def test_shared_client_is_reused():
     with aioresponses() as m:
         m.get(action_url("status_show"), payload={"success": True, "result": {}}, repeat=True)
@@ -109,6 +213,7 @@ async def test_shared_client_is_reused():
 def test_summarize_package_drops_noise_keeps_essentials():
     summary = server._summarize_package(SAMPLE_PACKAGE)
     assert summary["id"] == "abc-123"
+    assert summary["information_url"] == "https://example.test/standards"
     assert summary["organization"] == "Municipal Licensing & Standards"
     assert summary["tags"] == ["housing", "rentsafe"]
     assert summary["formats"] == ["CSV", "JSON"]
@@ -187,7 +292,7 @@ def _gating_probe(flag_value):
         "import asyncio;"
         "from ckan_mcp_server import server as s;"
         "names={tool.name for tool in asyncio.run(s.mcp.list_tools())};"
-        "print('ckan_status_show' in names, 'ckan_package_show' in names)"
+        "print(len(names), 'ckan_status_show' in names, 'ckan_package_show' in names)"
     )
     env = dict(os.environ)
     env["CKAN_URL"] = "https://ckan.test"
@@ -207,8 +312,8 @@ def _gating_probe(flag_value):
 
 def test_low_value_tools_hidden_by_default():
     # Lean default: status_show unregistered, package_show still registered.
-    assert _gating_probe(None) == "False True"
+    assert _gating_probe(None) == "8 False True"
 
 
 def test_expose_all_tools_flag_registers_low_value_tools():
-    assert _gating_probe("1") == "True True"
+    assert _gating_probe("1") == "16 True True"

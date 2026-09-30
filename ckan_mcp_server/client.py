@@ -22,7 +22,12 @@ def validate_ckan_url(value: str | None) -> str:
             "(e.g. https://ckan0.cf.opendata.inter.prod-toronto.ca)."
         )
 
-    parsed = urlsplit(value)
+    message = "CKAN_URL must be an http(s) base URL without credentials, query, or fragment."
+    try:
+        parsed = urlsplit(value)
+        port = parsed.port
+    except ValueError as exc:
+        raise ToolError(message) from exc
     if (
         parsed.scheme not in {"http", "https"}
         or not parsed.hostname
@@ -30,10 +35,9 @@ def validate_ckan_url(value: str | None) -> str:
         or parsed.password is not None
         or parsed.query
         or parsed.fragment
+        or port == 0
     ):
-        raise ToolError(
-            "CKAN_URL must be an http(s) base URL without credentials, query, or fragment."
-        )
+        raise ToolError(message)
     return value.rstrip("/")
 
 
@@ -100,7 +104,11 @@ class CKANAPIClient:
                 password=self.basic_auth_password,
             )
         if params:
-            params = {key: value for key, value in params.items() if value is not None}
+            params = {
+                key: str(value).lower() if isinstance(value, bool) else value
+                for key, value in params.items()
+                if value is not None
+            }
 
         try:
             assert self.session is not None
@@ -112,7 +120,18 @@ class CKANAPIClient:
                 params=params,
                 auth=auth,
             ) as response:
-                result = await response.json()
+                status = response.status
+                try:
+                    result = await response.json()
+                except (ValueError, aiohttp.ContentTypeError) as exc:
+                    raise ToolError(
+                        f"CKAN returned a non-JSON response (HTTP {status}): {endpoint}"
+                    ) from exc
+                # CKAN can return useful API errors with either HTTP 200 or 4xx.
+                if status >= 400 and not (
+                    isinstance(result, dict) and result.get("success") is False
+                ):
+                    raise ToolError(f"CKAN HTTP error {status}: {endpoint}")
         except TimeoutError as exc:
             raise ToolError(
                 f"CKAN request timed out after {self.timeout.total}s: {endpoint}"
@@ -120,8 +139,12 @@ class CKANAPIClient:
         except aiohttp.ClientError as exc:
             raise ToolError(f"Failed to reach configured CKAN endpoint: {exc}") from exc
 
-        if not result.get("success", False):
+        if not isinstance(result, dict) or not isinstance(result.get("success"), bool):
+            raise ToolError(f"CKAN returned an invalid response envelope: {endpoint}")
+        if not result["success"]:
             error = result.get("error", {})
             logger.warning("CKAN API error for %s: %s", endpoint, error)
             raise ToolError(f"CKAN API error on {endpoint}: {error}")
-        return result.get("result", {})
+        if "result" not in result:
+            raise ToolError(f"CKAN returned a response without a result: {endpoint}")
+        return result["result"]

@@ -1,5 +1,14 @@
 # CHANGELOG
 
+2026-09-30 - unreleased maintenance
+
+* Update aiohttp, certifi, FastMCP 3.x and pypdf within supported dependency ranges.
+* Advertise read-only MCP annotations while preserving the eight default tools.
+* Preserve information_url in trimmed dataset metadata for source discovery.
+* Encode Boolean CKAN query parameters and return useful errors for malformed URLs, HTTP failures and invalid JSON envelopes.
+* Handle empty document vocabularies and nonpositive retrieval limits without ranking failures.
+* Add offline regression and MCP/HTTP protocol coverage; document transport behavior, dependency decisions and the Plugin Creator route.
+
 2026-06-21 - unreleased
 
 * FIX: Packaging — include `document_scraper` in the built distribution (the server imports it; it was previously omitted from `py-modules`)

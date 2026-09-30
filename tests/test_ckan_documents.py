@@ -127,6 +127,26 @@ def test_rank_sections_no_match_returns_empty():
     assert ds.rank_sections(pages, "zzzznonexistentterm", k=3) == []
 
 
+def test_rank_sections_punctuation_only_document_returns_empty():
+    assert ds.rank_sections([Page("u", "---", "... !!!", "html")], "heat") == []
+
+
+@pytest.mark.parametrize("query,k", [("heat", 0), ("heat", -1), ("!!!", 5), ("", 5)])
+def test_rank_sections_empty_query_or_nonpositive_limit(query, k):
+    pages = [Page("u", "Heating", "Heat must be provided.", "html")]
+    assert ds.rank_sections(pages, query, k=k) == []
+
+
+def test_rank_sections_mixed_empty_and_searchable_sections():
+    pages = [
+        Page("u", "---", "!!!", "html"),
+        Page("v", "Heating", "Heat must be provided.", "html"),
+    ]
+    results = ds.rank_sections(pages, "heat")
+    assert len(results) == 1
+    assert results[0].url == "v"
+
+
 def test_rank_sections_single_section_corpus():
     # Degenerate one-section corpus: BM25 IDF collapses, overlap floor must retrieve.
     pages = [
