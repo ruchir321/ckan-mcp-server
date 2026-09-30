@@ -270,6 +270,49 @@ agent tools, read the credential file, or inspect the user's clipboard/Notepad.
 User-operated saving and connection confirmation must precede agent readiness
 checks. Verify any existing independent tunnel remains healthy separately.
 
+### Persistent user service
+
+`deploy/ckan-mcp-tunnel.service.in` is the native systemd template. Render
+`@REPO_ROOT@` and `@TUNNEL_BINARY@` to reviewed absolute paths, keep the result
+owner-only at `.local-tunnel/ckan-mcp-tunnel.service`, and validate it with
+`systemd-analyze --user verify` before activation. The saved profile and key file
+must already exist from the user-operated handoff. The unit contains a credential
+file reference only and clears inherited environment overrides. Never put key
+values in a unit, command argument, log, or Git.
+
+This service supervises native tunnel-client, which launches CKAN's virtualenv
+stdio server. Docker is not involved. It restarts after exit with a 10-second
+delay, stops its own process group, and uses the same CKAN lock as the terminal
+helper. Lock contention exits without a restart loop. Loopback health ports are
+allocated automatically, independently of other tunnels.
+
+**User activation:** review the prepared unit, then press Ctrl-C in the terminal
+running the foreground CKAN tunnel. Do not stop other tunnels. From this repository,
+run the following yourself to authorize persistent access with the saved key:
+
+```bash
+flock --nonblock .local-tunnel/run.lock true && \
+  systemctl --user enable --now "$PWD/.local-tunnel/ckan-mcp-tunnel.service"
+```
+
+The first command refuses activation while the foreground helper holds the lock.
+The second links/enables this separate user unit and starts it immediately. It
+will subsequently start with the user manager; boot startup without a login needs
+user lingering to be enabled (check it separately; do not change it implicitly).
+Keep the checkout and its private state in place while this service is enabled.
+
+After user-confirmed activation, verify `is-enabled`, `is-active`, `Restart`,
+`RestartUSec`, `MainPID`, and `NRestarts` with `systemctl --user`, then use the
+health command above to verify a successful control-plane poll. Separately verify
+any existing tunnel's health. Local readiness does not establish that a ChatGPT
+connection can discover tools; verify that connection separately.
+
+To stop and remove autostart yourself:
+
+```bash
+systemctl --user disable --now ckan-mcp-tunnel.service
+```
+
 ## Read features proposed for a later decision
 
 These are proposals, not additional registered tools:

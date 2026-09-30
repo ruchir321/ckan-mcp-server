@@ -1,0 +1,19 @@
+[Unit]
+Description=CKAN Toronto Open Data private MCP tunnel
+StartLimitIntervalSec=120
+StartLimitBurst=6
+
+[Service]
+Type=simple
+WorkingDirectory=@REPO_ROOT@
+UMask=0077
+ExecStart=/usr/bin/flock --no-fork --nonblock --conflict-exit-code 75 @REPO_ROOT@/.local-tunnel/run.lock /usr/bin/env -i HOME=%h PATH=/usr/bin:/bin LANG=C.UTF-8 CKAN_URL=https://ckan0.cf.opendata.inter.prod-toronto.ca MCP_TRANSPORT=stdio @TUNNEL_BINARY@ run --profile ckan --profile-dir @REPO_ROOT@/.local-tunnel/profiles --control-plane.api-key file:@REPO_ROOT@/.local-tunnel/runtime-key --health.listen-addr 127.0.0.1:0 --health.url-file @REPO_ROOT@/.local-tunnel/health.url --pid.file @REPO_ROOT@/.local-tunnel/tunnel.pid --mcp.stdio-send-initialized-notification --log.http-raw-unsafe=false
+Restart=always
+RestartSec=10
+RestartPreventExitStatus=75
+KillMode=control-group
+TimeoutStopSec=30
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target
