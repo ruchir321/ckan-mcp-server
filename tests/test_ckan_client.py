@@ -161,16 +161,22 @@ async def test_mcp_discovery_advertises_read_only_tools_and_calls_search():
 
 
 @pytest.mark.parametrize(
-    "filters",
-    [None, {}, {"PREMISES_TYPE": "Commercial"}, {"REPORT_YEAR": 2024, "DIVISION": "D11"}],
+    "filters,limit",
+    [
+        (None, 5),
+        ({}, 5),
+        ({"PREMISES_TYPE": "Commercial"}, 5),
+        ({"REPORT_YEAR": 2024, "DIVISION": "D11"}, 5),
+        ({"REPORT_YEAR": "2025", "CATEGORY": ["Theft", "Robbery"]}, 0),
+    ],
 )
-async def test_mcp_datastore_exact_filters_preserve_request_and_source_rows(filters):
+async def test_mcp_datastore_exact_filters_preserve_request_and_source_rows(filters, limit):
     # Repeated grouping keys remain separate source rows; filtering is not aggregation.
     payload = {
         "total": 2,
-        "records": [{"_id": 1, "COUNT_": "2"}, {"_id": 2, "COUNT_": "5"}],
+        "records": [{"_id": 1, "COUNT_": "2"}, {"_id": 2, "COUNT_": "5"}] if limit else [],
     }
-    args = {"resource_id": "sample-resource", "limit": 5, "fields": ["_id", "COUNT_"]}
+    args = {"resource_id": "sample-resource", "limit": limit, "fields": ["_id", "COUNT_"]}
     if filters is not None:
         args["filters"] = filters
     with aioresponses() as mocked:

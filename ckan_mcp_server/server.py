@@ -236,7 +236,9 @@ async def ckan_datastore_search(
 
     `q` is CKAN full-text search and depends on the portal's search index. Use
     `filters={"FIELD_NAME": "value"}` for exact values in named fields; multiple
-    fields are combined with AND. A zero-result text query does not establish
+    fields are combined with AND, and list values match any listed value. Use
+    schema-appropriate value types and `limit=0` for counts without rows.
+    A zero-result text query does not establish
     that a value is absent from the resource. No arbitrary SQL is supported.
     """
     client = await get_client()

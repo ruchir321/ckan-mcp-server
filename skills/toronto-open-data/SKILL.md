@@ -70,7 +70,9 @@ each step needs. To answer a multi-faceted question, chain searches:
 - DataStore `q` is full-text search, not SQL or an exact field filter. On Toronto
   resources, a preview value can exist even when `q` returns zero matches. Inspect
   the schema and use `filters` with the exact field name and value; omit `q` when
-  it is not needed. Multiple filter fields use AND. Do not interpret an empty
+  it is not needed. Multiple filter fields use AND, and a list matches any listed
+  value within one field. Match schema types (including numeric-looking text)
+  and use `limit=0` for counts without rows. Do not interpret an empty
   text-search result as proof that the underlying rows are absent.
 - Returned rows are source records, not guaranteed unique by a chosen grouping
   key. Preserve `_id` while inspecting repeated keys and check the dataset's

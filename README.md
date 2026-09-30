@@ -143,7 +143,9 @@ cost — small. Set `CKAN_EXPOSE_ALL_TOOLS=1` to register the additional endpoin
 DataStore `q` uses the portal's full-text index. A value visible in a preview may
 return no text-search matches when the index does not cover that field. Use
 `filters={"FIELD_NAME": "value"}` for exact field matches, with multiple fields
-combined using AND. Keep `q` omitted when only exact filters are needed. Filtering
+combined using AND; a list matches any listed value within a field. Match the
+schema's value types and use `limit=0` to request a count without rows. Keep `q`
+omitted when only exact filters are needed. Filtering
 preserves CKAN's returned records and counts; it does not aggregate or deduplicate
 rows. See the [CKAN DataStore search reference](https://docs.ckan.org/en/2.11/maintaining/datastore.html#ckanext.datastore.logic.action.datastore_search).
 
