@@ -34,4 +34,7 @@ __pycache__/
 
 .duo/
 
+# Private, user-configured tunnel profile, credential and runtime state
+.local-tunnel/
+
 docs/*

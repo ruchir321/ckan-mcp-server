@@ -232,6 +232,44 @@ access before starting either route. UI labels and marketplace availability can
 vary by client; the linked workflow is documentation verification, not a verified
 setup in a particular account.
 
+### User-operated private tunnel handoff (Linux)
+
+With the existing tunnel-client binary, run this yourself in an ordinary terminal,
+not an agent-captured terminal. Replace the binary path with its installed location:
+
+```bash
+.venv/bin/python scripts/start_private_tunnel.py --binary /path/to/tunnel-client
+```
+
+The helper asks for a **dedicated CKAN tunnel ID**, your `SAVE` confirmation, and
+then the runtime API key through a hidden prompt. It saves the key under
+`.local-tunnel/runtime-key` with mode 0600 inside a mode-0700 directory. The
+separate `ckan` profile references the file; the key is never placed in command
+arguments, shell history, or the profile itself. Private state is Git-ignored.
+The helper does not read or reuse another service's environment or credentials.
+
+A second `CONNECT` confirmation authorizes doctor and foreground startup. Doctor
+failure stops the procedure; resolve the reported permission/configuration issue
+before retrying. Keep the terminal open. Ctrl-C stops this CKAN process. No system
+service or ChatGPT app is installed. A process lock prevents a duplicate launch
+through this helper. Restart the saved CKAN profile using the same command with
+`--resume`; this requires `CONNECT` again and does not prompt for or read the key
+in the Python helper (tunnel-client resolves its file reference).
+
+The health listener uses an available loopback port recorded in
+`.local-tunnel/health.url`, with its PID in `.local-tunnel/tunnel.pid`. After the
+user confirms setup is complete, verify readiness using the installed binary:
+
+```bash
+/path/to/tunnel-client health --url-file .local-tunnel/health.url \
+  --pid-file .local-tunnel/tunnel.pid --require-control-plane-poll --json
+```
+
+Agent handoff boundary: do not run this helper's credential-entry flow through
+agent tools, read the credential file, or inspect the user's clipboard/Notepad.
+User-operated saving and connection confirmation must precede agent readiness
+checks. Verify any existing independent tunnel remains healthy separately.
+
 ## Read features proposed for a later decision
 
 These are proposals, not additional registered tools:
