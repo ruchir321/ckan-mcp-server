@@ -1,19 +1,102 @@
-
 # CKAN MCP Server
 
-A read-only Model Context Protocol (MCP) server for discovering and querying CKAN data portals through MCP-compatible clients. It does not create, update, or delete portal data.
+Connect ChatGPT to CKAN open data portals so you can find datasets, inspect their
+fields, query records, and answer follow-up questions using linked source documents.
+The included Toronto Open Data skill guides that workflow for City of Toronto data.
+The server is read-only: it does not create, update, or delete portal data.
 
-## What is this?
+## Add it to ChatGPT
 
-This MCP server bridges the gap between manual data fetching and automated analysis. Instead of manually searching for datasets, downloading files, and figuring out schemas, this server allows AI agents to:
-1.  **Discover Data**: Search and filter datasets using natural language.
-2.  **Understand Structure**: Automatically retrieve schemas and field definitions.
-3.  **Preview Content**: Peek into data resources without downloading the entire file.
-4.  **Analyze**: Search, sort and paginate records in DataStore-enabled resources.
+Once you have this repository locally, follow the steps below to connect it to
+ChatGPT. You need ChatGPT developer-mode access; packaging the Toronto workflow
+also needs ChatGPT Work with Plugin Creator available in the desktop app.
+This repository provides the server, skill, and setup helpers, without a hosted
+endpoint or credentials. You create your own connection and plugin; there is
+no ready-made plugin to install from this repository.
 
-It is designed to be dropped into any MCP-compatible IDE or agent to instantly give it access to the wealth of open data available on CKAN portals.
+### 1. Prepare the local server
 
-### Generic core + Toronto flagship Skill
+Install Python 3.13 or higher and [`uv`](https://docs.astral.sh/uv/), then run this
+from the repository root:
+
+```bash
+uv sync --all-extras --frozen
+```
+
+This creates the virtual environment used by the tunnel helper. Toronto public
+data needs no CKAN API key. See [server configuration](#configuration) if you
+want to use a different portal.
+
+### 2. Make the server reachable from ChatGPT
+
+For a local server, use a dedicated
+[Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels).
+Create it in Platform tunnel settings, associate it with your ChatGPT workspace,
+and obtain a runtime API key and the `tunnel-client` binary. Tunnel permissions
+and ChatGPT developer-mode access are separate prerequisites.
+
+Follow the [Linux private tunnel setup](#user-operated-private-tunnel-handoff-linux)
+below. The helper launches this server over stdio and keeps credentials in private,
+Git-ignored files. Choose the connection method and authorize credential and
+workspace access before starting. Keep the tunnel running while using ChatGPT.
+If you already operate an HTTPS Streamable HTTP endpoint, you can connect that instead;
+review the [transport and access guidance](#development-and-transport-validation).
+
+### 3. Add the connection in ChatGPT
+
+Enable Developer mode in **Settings → Security and login**, then open the
+ChatGPT Plugins page and select **+**. For the private route, choose **Tunnel**
+under Connection and select your dedicated CKAN tunnel. For a hosted server,
+supply its MCP URL and connection details. Finish registration and test that
+ChatGPT can discover the server's tools.
+
+If your tunnel is missing, check its workspace association and your Tunnels
+Read + Use permission. Menu labels and feature availability can vary by account;
+follow the linked official documentation if your interface differs.
+
+### 4. Add the Toronto workflow with Plugin Creator
+
+After registration, copy the connection's technical ID from its browser URL
+(the ID starts with `plugin_asdk_app`). In ChatGPT Work, invoke `@plugin-creator`
+and ask it to bundle that connection with
+[`skills/toronto-open-data/`](skills/toronto-open-data/SKILL.md).
+For example, replace the placeholder below with your actual connection ID and
+provide access to this repository's skill folder:
+
+> @plugin-creator Create a Toronto Open Data plugin using my registered MCP
+> connection CONNECTION_ID and this repository's Toronto skill. Include a
+> personal marketplace entry for testing.
+
+Review the generated connection mapping, install from your local source in the
+Plugins Directory, and test in a new chat. See the
+[official packaging workflow](https://developers.openai.com/plugins/build/plugins)
+for details. This creates a plugin for your own testing; public directory
+submission is a separate process.
+
+### 5. Try it in a chat
+
+With the connection available, try:
+
+- “Find Toronto apartment building evaluation datasets and show me their fields.”
+- “Preview a resource, then filter records by an exact field value.”
+- “Read the documentation linked to this dataset and cite the source for your answer.”
+
+The server can query records when a resource uses CKAN DataStore. Other resources
+return metadata in previews. Document answers depend on the sources linked from
+the dataset; ask ChatGPT to cite those sources and say when they do not cover a
+question. See [available tools](#available-tools) for the full capabilities.
+
+The connection and packaging steps above were checked against official OpenAI
+documentation on 2026-10-01. They do not establish that setup has succeeded in
+your account; verify discovery and a real tool call after connecting.
+
+## Server and developer reference
+
+The sections below cover other MCP clients, configuration, tools, validation,
+and deployment. ChatGPT setup above does not require a Codex session or editing
+client configuration JSON.
+
+### Reusing the server with other portals
 
 The **MCP server is portal-agnostic** — point `CKAN_URL` at any CKAN instance and the tools work.
 Portal-specific *domain knowledge* (which datasets matter, how to chain searches, the grounding
@@ -21,7 +104,7 @@ discipline for citing source documents) lives separately in an **Agent Skill**, 
 server lean and reusable. The reference Skill ships in this repo:
 [`skills/toronto-open-data/`](skills/toronto-open-data/SKILL.md) for the City of Toronto Open Data
 portal. Install it in your client’s supported skills location, or bundle it using Plugin Creator
-(see below). Author similar skills for other portals while reusing the same server.
+(see the ChatGPT setup above). Author similar skills for other portals while reusing the same server.
 
 ## Requirements
 
@@ -58,7 +141,7 @@ export CKAN_URL="https://demo.ckan.org"
 
 The server reads the process environment only; it does not implicitly load dotenv files.
 
-## Usage
+## Running the server in other environments
 
 ### Running the server directly
 
@@ -83,7 +166,7 @@ docker run --rm -i -e CKAN_URL="https://demo.ckan.org" ckan-mcp-server
 CKAN_URL=https://demo.ckan.org docker compose --profile stdio run --rm ckan-mcp-server-stdio
 ```
 
-## IDE Integration
+## Optional IDE and desktop client integration
 
 To use this server with a coding agent IDE (like Cursor, Windsurf, or others supporting MCP), you need to configure it as an MCP server.
 
@@ -122,6 +205,13 @@ Point `uv` at the project directory so it uses the locked environment.
   }
 }
 ```
+
+### Optional Codex packaging
+
+If you prefer to create the plugin in Codex, invoke `$plugin-creator` with the
+registered connection ID and the Toronto skill folder. Follow the same
+[packaging workflow](https://developers.openai.com/plugins/build/plugins) and
+review the generated mapping before installation.
 
 ## Available Tools
 
@@ -214,32 +304,9 @@ ranges. Their major/runtime and lint-policy migrations are deferred to separate
 changes. The test-only aiohttp/aioresponses compatibility shim remains necessary
 with aioresponses 0.7.9; it does not alter production sessions.
 
-## ChatGPT integration: Plugin Creator next
+## Private tunnel and service reference
 
-Use Plugin Creator after server validation and explicit authorization for connection
-setup. No public endpoint, tunnel, credentials, or registered plugin is supplied by
-this repository.
-
-The [official packaging workflow](https://developers.openai.com/plugins/build/plugins),
-checked on 2026-09-30, supports `@plugin-creator` in ChatGPT Work and
-`$plugin-creator` in Codex. Ask it to bundle this repository’s Toronto skill and MCP
-connection under a Toronto Open Data plugin, with a personal marketplace entry for
-testing. Confirm that Plugin Creator is available in the selected client first.
-
-For ChatGPT cloud tool access, current documentation requires a registered MCP
-connection before Plugin Creator wires that connection into the package. Supply
-the real `plugin_asdk_app...` technical ID returned by registration; never invent
-one. Follow the client’s current connection flow when that step is authorized,
-then let Plugin Creator prepare the package, review its mapping, and authorize
-installation. This is distinct from submitting a public directory plugin.
-
-An authorized connection may use a dedicated private
-[Secure MCP Tunnel](https://developers.openai.com/api/docs/guides/secure-mcp-tunnels)
-with stdio, or an approved HTTPS Streamable HTTP endpoint. This server already
-supports both transports. Choose the connection method and credential/workspace
-access before starting either route. UI labels and marketplace availability can
-vary by client; the linked workflow is documentation verification, not a verified
-setup in a particular account.
+Run the following commands from the repository root.
 
 ### User-operated private tunnel handoff (Linux)
 
@@ -326,9 +393,6 @@ systemctl --user disable --now ckan-mcp-tunnel.service
 
 These are proposals, not additional registered tools:
 
-- **Exact record filters:** add CKAN DataStore `filters` to the existing search
-  tool for precise ward, neighbourhood or entity matching. Validate the schema
-  and preserve portal-side pagination; this is the smallest useful addition.
 - **Bounded file previews:** sample CSV/GeoJSON when DataStore is unavailable.
   Agree on byte/row limits, supported formats and provenance before adding downloads.
 - **Dataset quality summaries:** report freshness, licensing, field completeness
