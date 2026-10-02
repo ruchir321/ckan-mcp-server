@@ -393,6 +393,9 @@ systemctl --user disable --now ckan-mcp-tunnel.service
 
 These are proposals, not additional registered tools:
 
+See the [gallery capability-gap research snapshot](docs/research/toronto-gallery-capability-gaps.md)
+for nine evidence-backed proposals, priorities, tradeoffs and proposed acceptance tests.
+
 - **Bounded file previews:** sample CSV/GeoJSON when DataStore is unavailable.
   Agree on byte/row limits, supported formats and provenance before adding downloads.
 - **Dataset quality summaries:** report freshness, licensing, field completeness

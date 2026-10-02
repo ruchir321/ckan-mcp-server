@@ -38,3 +38,6 @@ __pycache__/
 .local-tunnel/
 
 docs/*
+!docs/research/
+docs/research/*
+!docs/research/toronto-gallery-capability-gaps.md
