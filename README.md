@@ -106,14 +106,9 @@ server lean and reusable. The reference Skill ships in this repo:
 portal. Install it in your client’s supported skills location, or bundle it using Plugin Creator
 (see the ChatGPT setup above). Author similar skills for other portals while reusing the same server.
 
-## Requirements
+## Requirements and installation
 
-- Python 3.13 or higher
-- [`uv`](https://docs.astral.sh/uv/)
-
-## Installation
-
-This project uses `uv` for dependency management. `uv` will automatically create and manage a virtual environment for you.
+Python 3.13 or higher and [`uv`](https://docs.astral.sh/uv/) are required. This project uses `uv` for dependency management. `uv` will automatically create and manage a virtual environment for you.
 
 1.  Install `uv`:
     ```bash
@@ -223,12 +218,12 @@ cost — small. Set `CKAN_EXPOSE_ALL_TOOLS=1` to register the additional endpoin
 
 **Packages/Datasets**
 -   `ckan_package_show`: Show details of a specific package (trimmed by default; `full=True` for raw)
--   `ckan_package_search`: Search for packages (trimmed by default; `full=True` for raw)
+-   `ckan_package_search`: Search for packages (trimmed by default, with notes shortened to 300 characters; `full=True` for raw)
 -   `ckan_dataset_schema`: Get the schema/structure of a dataset (resources and fields)
 
 **Data Analysis**
--   `ckan_resource_preview`: Preview DataStore rows; return resource metadata when DataStore is unavailable (no CSV download fallback)
--   `ckan_datastore_search`: Search DataStore records with text queries, exact field filters, field selection, sorting and pagination (no arbitrary SQL)
+-   `ckan_resource_preview`: Preview DataStore rows (field metadata reduced to `id` and `type`); return resource metadata when DataStore is unavailable (no CSV download fallback)
+-   `ckan_datastore_search`: Search DataStore records with text queries, exact field filters, field selection, sorting and pagination (no arbitrary SQL). Returns 20 rows when `limit` is omitted
 
 DataStore `q` uses the portal's full-text index. A value visible in a preview may
 return no text-search matches when the index does not cover that field. Use
@@ -242,7 +237,7 @@ rows. See the [CKAN DataStore search reference](https://docs.ckan.org/en/2.11/ma
 **Grounded Documentation** — read the authoritative documents linked from a dataset's metadata
 (`information_url` + links in `notes`), so the agent can answer legal/bylaw follow-ups from a cited
 source of truth instead of guessing.
--   `ckan_fetch_dataset_docs`: Crawl a dataset's linked docs (HTML + PDF, in-scope subpages) and return them as Markdown with source URLs
+-   `ckan_fetch_dataset_docs`: Crawl a dataset's linked docs (HTML + PDF, in-scope subpages) and return them as Markdown with source URLs. Output is capped at 60,000 characters in total (30,000 per page). The crawl follows redirects, scopes to the final URL, and skips non-document content types and files that fail extraction
 -   `ckan_search_dataset_docs`: Return the top-k passages from those docs matching a query, each with its source URL and heading (citable)
 -   `ckan_read_web_document`: Fetch a single URL as clean Markdown (public hosts only; see SSRF note)
 
@@ -282,25 +277,6 @@ The default transport is stdio. `MCP_TRANSPORT=http` selects Streamable HTTP at
 and choose an unused port before starting HTTP. The Compose HTTP profile publishes
 port 8000 on the loopback interface only and has no application authentication;
 review access controls before exposing it further.
-
-## Dependency maintenance
-
-Direct runtime and development requirements were checked against official PyPI
-metadata on 2026-09-30. Compatible updates applied:
-
-| Package | Previous lock | Updated lock | Upstream reference |
-| --- | --- | --- | --- |
-| aiohttp | 3.14.1 | 3.14.3 | [Release notes](https://github.com/aio-libs/aiohttp/releases/tag/v3.14.3) |
-| FastMCP / fastmcp-slim | 3.4.4 | 3.4.7 | [Release notes](https://github.com/PrefectHQ/fastmcp/releases/tag/v3.4.7) |
-| certifi | 2026.6.17 | 2026.7.22 | [PyPI release](https://pypi.org/project/certifi/2026.7.22/) |
-| pypdf | 6.14.2 | 6.19.0 | [Release notes](https://github.com/py-pdf/pypdf/releases/tag/6.19.0) |
-
-The other direct packages were already current within their declared ranges.
-[FastMCP 4.0.10](https://pypi.org/project/fastmcp/4.0.10/) and
-[Ruff 0.16.9](https://pypi.org/project/ruff/0.16.9/) were available outside those
-ranges. Their major/runtime and lint-policy migrations are deferred to separate
-changes. The test-only aiohttp/aioresponses compatibility shim remains necessary
-with aioresponses 0.7.9; it does not alter production sessions.
 
 ## Private tunnel and service reference
 
@@ -411,3 +387,6 @@ Mozilla Public License Version 2.0
 
 -   **Current Maintainer**: Ruchir Attri (ruchir.attri99@gmail.com)
 -   **Original Author**: (C) 2025, Ondics GmbH, https://ondics.de
+
+---
+Author: Claude Code | Model: claude-sonnet-5-5 | Date: 2026-11-11 (updated)

@@ -1,5 +1,24 @@
 # CHANGELOG
 
+2026-11-11 - unreleased crawler and result-size work
+
+* FIX: Document crawl scope follows redirects; pages are reported and deduplicated by final URL, and a child page that redirects out of scope is dropped
+* FIX: A document that fails extraction (for example a corrupt PDF) is skipped instead of aborting the crawl
+* FIX: Non-document content types (images, spreadsheets, archives) are refused before download
+* ENH: `ckan_fetch_dataset_docs` output is capped at 60,000 characters, with `total_chars` and `truncated` per page
+* ENH: `ckan_datastore_search` returns 20 rows when `limit` is omitted; `limit=0` still returns a count only
+* ENH: DataStore row results carry only `id` and `type` per field and no `_links`
+* ENH: `ckan_package_search` shortens notes to 300 characters
+* ENH: Bare URLs in dataset notes are used as documentation seeds
+* ENH: Crawl cache serves smaller requests from a larger crawl, runs one crawl per key and holds at most 32 entries
+* ENH: CKAN requests retry twice on 429, 502, 503, 504 and connection errors
+* ENH: Parsing and DNS checks run in worker threads
+* ENH: Server instructions describe the query workflow
+* SEC: Compose HTTP profile binds to loopback; stdio service no longer sets `tty`
+* RMV: `rank-bm25` (and numpy) replaced by a built-in BM25 scorer
+* RMV: Stale `ckan://api/docs` resource, legacy test helpers and the `python_files` collection allowlist
+* DOC: Trimmed `.gitignore`; removed the dependency maintenance table from the README (see the 2026-09-30 entry)
+
 2026-09-30 - unreleased maintenance
 
 * Update aiohttp, certifi, FastMCP 3.x and pypdf within supported dependency ranges.
@@ -48,3 +67,6 @@
 2025-05-25
 
 * ENH: initial release with basic toolset
+
+---
+Author: Claude Code | Model: claude-sonnet-5-5 | Date: 2026-11-11 (updated)
