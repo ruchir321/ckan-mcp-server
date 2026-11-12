@@ -365,3 +365,26 @@ def test_low_value_tools_hidden_by_default():
 
 def test_expose_all_tools_flag_registers_low_value_tools():
     assert _gating_probe("1") == "16 True True"
+
+
+async def test_datastore_search_applies_default_limit_when_omitted():
+    with aioresponses() as mocked:
+        mocked.post(
+            action_url("datastore_search"),
+            payload={"success": True, "result": {"total": 0, "records": []}},
+        )
+        await server.ckan_datastore_search(resource_id="r")
+    request = next(iter(mocked.requests.values()))[0]
+    assert server.DEFAULT_DATASTORE_LIMIT == 20
+    assert request.kwargs["json"] == {"resource_id": "r", "limit": 20}
+
+
+async def test_datastore_search_keeps_explicit_zero_limit():
+    with aioresponses() as mocked:
+        mocked.post(
+            action_url("datastore_search"),
+            payload={"success": True, "result": {"total": 9, "records": []}},
+        )
+        await server.ckan_datastore_search(resource_id="r", limit=0)
+    request = next(iter(mocked.requests.values()))[0]
+    assert request.kwargs["json"] == {"resource_id": "r", "limit": 0}

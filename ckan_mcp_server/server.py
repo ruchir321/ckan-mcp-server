@@ -21,6 +21,8 @@ CKAN_URL = os.getenv("CKAN_URL")
 # Max characters returned by ckan_read_web_document to avoid context overflow.
 MAX_DOCUMENT_CHARS = 30000
 MAX_DOCS_RESPONSE_CHARS = 60000
+DEFAULT_DATASTORE_LIMIT = 20
+SEARCH_NOTES_CHARS = 300
 
 
 # --- Shared client lifecycle ---
@@ -241,8 +243,11 @@ async def ckan_datastore_search(
     schema-appropriate value types and `limit=0` for counts without rows.
     A zero-result text query does not establish
     that a value is absent from the resource. No arbitrary SQL is supported.
+    Returns 20 rows when limit is omitted; raise limit deliberately and project with fields.
     """
     client = await get_client()
+    if limit is None:
+        limit = DEFAULT_DATASTORE_LIMIT
     data = {
         "resource_id": resource_id,
         "q": q,
