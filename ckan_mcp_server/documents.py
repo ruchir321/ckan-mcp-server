@@ -58,6 +58,23 @@ class DocumentLimitError(ValueError):
     """Raised when a document exceeds a configured resource bound."""
 
 
+class DocumentTypeError(ValueError):
+    """Raised when a response is not a document type this module can read."""
+
+
+_TEXT_TYPES = {"text/html", "application/xhtml+xml", "text/plain", "text/markdown"}
+
+
+def _document_kind(url: str, content_type: str) -> str:
+    """Return "pdf" or "html" for an accepted response, else raise DocumentTypeError."""
+    media = content_type.split(";", 1)[0].strip().lower()
+    if "pdf" in media or urlparse(url).path.lower().endswith(".pdf"):
+        return "pdf"
+    if not media or media in _TEXT_TYPES:
+        return "html"
+    raise DocumentTypeError(f"unsupported content type: {media}")
+
+
 @dataclass
 class Page:
     url: str
@@ -323,6 +340,7 @@ async def _request_with_redirects(
                 current = canonicalize(urljoin(current, location))
                 continue
             response.raise_for_status()
+            _document_kind(current, response.headers.get("Content-Type", ""))
             body = await _read_limited(response, max_bytes)
             return current, response.headers.get("Content-Type", "").lower(), body
     raise DocumentSecurityError("document redirect limit exceeded")
@@ -363,7 +381,7 @@ async def _allowed(session: aiohttp.ClientSession, url: str, cache: dict) -> boo
 async def fetch_document(session: aiohttp.ClientSession, url: str) -> tuple[str, str, str | bytes]:
     """Fetch a URL, returning (final_url, "html", text) or (final_url, "pdf", bytes)."""
     final_url, content_type, body = await _request_with_redirects(session, url)
-    if "pdf" in content_type or final_url.lower().endswith(".pdf"):
+    if _document_kind(final_url, content_type) == "pdf":
         return final_url, "pdf", body
     return final_url, "html", body.decode("utf-8", errors="replace")
 

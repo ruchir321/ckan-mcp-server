@@ -358,3 +358,46 @@ async def test_crawl_skips_unparseable_pdf_and_keeps_other_pages():
         )
         pages = await ds.crawl([seed], obey_robots=False, delay=0, max_depth=2)
     assert [p.url for p in pages] == [seed]
+
+
+@pytest.mark.parametrize(
+    "url,content_type,kind",
+    [
+        ("https://x.test/a", "text/html; charset=utf-8", "html"),
+        ("https://x.test/a", "application/xhtml+xml", "html"),
+        ("https://x.test/a", "text/plain", "html"),
+        ("https://x.test/a", "text/markdown", "html"),
+        ("https://x.test/a", "", "html"),
+        ("https://x.test/a", "application/pdf", "pdf"),
+        ("https://x.test/a.PDF", "application/octet-stream", "pdf"),
+    ],
+)
+def test_document_kind_accepts_documents(url, content_type, kind):
+    assert ds._document_kind(url, content_type) == kind
+
+
+@pytest.mark.parametrize(
+    "content_type",
+    [
+        "image/jpeg",
+        "application/zip",
+        "text/csv",
+        "application/json",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ],
+)
+def test_document_kind_rejects_other_types(content_type):
+    with pytest.raises(ds.DocumentTypeError, match="unsupported content type"):
+        ds._document_kind("https://x.test/file", content_type)
+
+
+async def test_crawl_skips_non_document_content_types():
+    seed = "https://site.test/a/"
+    html = '<h1>A</h1><a href="/a/data.xlsx">x</a><a href="/a/photo.jpg">p</a>'
+    xlsx = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    with aioresponses() as m:
+        m.get(seed, body=html, content_type="text/html")
+        m.get("https://site.test/a/data.xlsx", body=b"\x00\x01" * 100, content_type=xlsx)
+        m.get("https://site.test/a/photo.jpg", body=b"\x00\x01" * 100, content_type="image/jpeg")
+        pages = await ds.crawl([seed], obey_robots=False, delay=0, max_depth=2)
+    assert [p.url for p in pages] == [seed]
