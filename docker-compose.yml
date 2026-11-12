@@ -6,7 +6,6 @@ services:
       CKAN_URL: ${CKAN_URL}
       CKAN_API_KEY: ${CKAN_API_KEY:-}
     stdin_open: true
-    tty: true
 
   ckan-mcp-server:
     profiles: [http]
@@ -18,4 +17,4 @@ services:
       MCP_HOST: 0.0.0.0
       MCP_PORT: 8000
     ports:
-      - "8000:8000"
+      - "127.0.0.1:8000:8000"

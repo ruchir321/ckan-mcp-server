@@ -282,8 +282,8 @@ The default transport is stdio. `MCP_TRANSPORT=http` selects Streamable HTTP at
 `/mcp`; `MCP_HOST` defaults to `127.0.0.1` and `MCP_PORT` to `8000`.
 `MCP_TRANSPORT=sse` remains available for legacy clients. Check running services
 and choose an unused port before starting HTTP. The Compose HTTP profile publishes
-port 8000 on all host interfaces and has no application authentication; review its
-binding and access controls before choosing that profile.
+port 8000 on the loopback interface only and has no application authentication;
+review access controls before exposing it further.
 
 ## Dependency maintenance
 
