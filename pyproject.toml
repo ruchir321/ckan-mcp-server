@@ -48,7 +48,6 @@ packages = ["ckan_mcp_server"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-python_files = ["test_ckan_*.py", "test_web_document.py"]
 
 [tool.uv]
 package = true

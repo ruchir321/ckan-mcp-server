@@ -274,8 +274,7 @@ make check
 
 The default suite is offline and includes MCP discovery/calls and Streamable HTTP
 initialization through an in-process ASGI client. No listening socket is opened.
-`tests/test_web_document_tool.py` is a legacy manual live-network probe, excluded
-from the offline suite; passing offline tests does not establish live portal health.
+Passing offline tests does not establish live portal health.
 
 The default transport is stdio. `MCP_TRANSPORT=http` selects Streamable HTTP at
 `/mcp`; `MCP_HOST` defaults to `127.0.0.1` and `MCP_PORT` to `8000`.
