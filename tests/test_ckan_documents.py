@@ -1,5 +1,6 @@
 """Offline tests for document_scraper (crawler / extraction / ranking)."""
 
+import asyncio
 import socket
 
 import pytest
@@ -406,3 +407,37 @@ async def test_crawl_skips_non_document_content_types():
 def test_discover_doc_urls_finds_bare_urls_and_strips_punctuation():
     pkg = {"notes": "Details at https://x.test/a/info. See also (https://x.test/b)."}
     assert ds.discover_doc_urls(pkg) == ["https://x.test/a/info", "https://x.test/b"]
+
+
+def _counting_crawl(calls, pages):
+    async def fake(seed_urls, max_pages=10, max_depth=2, session=None):
+        calls.append(max_pages)
+        await asyncio.sleep(0.01)
+        return pages[:max_pages]
+
+    return fake
+
+
+async def test_gather_reuses_a_larger_cached_crawl(monkeypatch):
+    calls = []
+    pages = [Page(f"https://site.test/{i}", str(i), "t", "html") for i in range(10)]
+    monkeypatch.setattr(ds, "crawl", _counting_crawl(calls, pages))
+    await ds.gather_dataset_pages(["https://site.test/a/"], max_pages=10)
+    smaller = await ds.gather_dataset_pages(["https://site.test/a/"], max_pages=5)
+    assert calls == [10]
+    assert len(smaller) == 5
+
+
+async def test_gather_runs_one_crawl_for_concurrent_requests(monkeypatch):
+    calls = []
+    monkeypatch.setattr(ds, "crawl", _counting_crawl(calls, []))
+    await asyncio.gather(*(ds.gather_dataset_pages(["https://site.test/a/"]) for _ in range(3)))
+    assert len(calls) == 1
+
+
+async def test_gather_evicts_beyond_max_entries(monkeypatch):
+    monkeypatch.setattr(ds, "MAX_CACHE_ENTRIES", 2)
+    monkeypatch.setattr(ds, "crawl", _counting_crawl([], []))
+    for name in ("a", "b", "c"):
+        await ds.gather_dataset_pages([f"https://site.test/{name}/"])
+    assert len(ds._CACHE) == 2

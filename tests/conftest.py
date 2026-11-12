@@ -51,6 +51,13 @@ def stub_dns(monkeypatch):
     monkeypatch.setattr(document_scraper.socket, "getaddrinfo", fake_getaddrinfo)
 
 
+@pytest.fixture(autouse=True)
+def reset_crawl_cache():
+    """Clear the crawl cache and its locks (a lock must not outlive its event loop)."""
+    document_scraper._CACHE.clear()
+    document_scraper._CACHE_LOCKS.clear()
+
+
 TEST_CKAN_URL = "https://ckan.test"
 
 

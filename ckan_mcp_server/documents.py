@@ -47,7 +47,11 @@ MAX_ROBOTS_BYTES = 256 * 1024
 MAX_PDF_PAGES = 100
 MAX_PDF_TEXT_CHARS = 2_000_000
 
+MAX_CACHE_ENTRIES = 32
+
+# key (seeds, max_depth) -> (timestamp, max_pages crawled with, pages)
 _CACHE: dict = {}
+_CACHE_LOCKS: dict = {}
 
 
 class DocumentSecurityError(ValueError):
@@ -475,15 +479,27 @@ async def gather_dataset_pages(
     max_depth: int = DEFAULT_MAX_DEPTH,
     session: aiohttp.ClientSession | None = None,
 ) -> list[Page]:
-    """crawl() with an in-process TTL cache keyed by seeds + crawl bounds."""
-    key = (tuple(sorted(canonicalize(u) for u in seed_urls)), max_pages, max_depth)
-    cached = _CACHE.get(key)
-    now = time.time()
-    if cached and now - cached[0] < CACHE_TTL:
-        return cached[1]
-    pages = await crawl(seed_urls, max_pages=max_pages, max_depth=max_depth, session=session)
-    _CACHE[key] = (now, pages)
-    return pages
+    """crawl() with an in-process TTL cache keyed by seeds and depth.
+
+    A cached crawl serves any request for the same or fewer pages, and only one
+    crawl per key runs at a time."""
+    key = (tuple(sorted(canonicalize(u) for u in seed_urls)), max_depth)
+    lock = _CACHE_LOCKS.setdefault(key, asyncio.Lock())
+    async with lock:
+        cached = _CACHE.get(key)
+        now = time.time()
+        if cached and now - cached[0] < CACHE_TTL:
+            _, crawled_with, cached_pages = cached
+            if crawled_with >= max_pages or len(cached_pages) < crawled_with:
+                return cached_pages[:max_pages]
+        pages = await crawl(seed_urls, max_pages=max_pages, max_depth=max_depth, session=session)
+        now = time.time()
+        _CACHE[key] = (now, max_pages, pages)
+        for k in [k for k, v in _CACHE.items() if now - v[0] >= CACHE_TTL]:
+            del _CACHE[k]
+        while len(_CACHE) > MAX_CACHE_ENTRIES:
+            del _CACHE[min(_CACHE, key=lambda k: _CACHE[k][0])]
+        return pages
 
 
 # --- Tier 1 retrieval ---
