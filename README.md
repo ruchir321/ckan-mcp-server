@@ -263,7 +263,6 @@ they do not provide authentication or enforce permissions.
 
 The server also provides the following resources:
 
--   `ckan://api/docs`: API documentation
 -   `ckan://config`: Server configuration
 
 ## Development and transport validation

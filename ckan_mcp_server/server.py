@@ -465,33 +465,6 @@ async def ckan_search_dataset_docs(
 # --- Resources ---
 
 
-@mcp.resource("ckan://api/docs")
-def get_api_docs() -> str:
-    """Official CKAN API documentation and endpoints"""
-    return """
-CKAN API Documentation Summary
-
-Base URL: Required CKAN_URL environment variable (no implicit default)
-API Version: 3
-
-Key Endpoints:
-- package_list: Get all packages/datasets
-- package_show: Get package details
-- package_search: Search packages
-- organization_list: Get all organizations  
-- organization_show: Get organization details
-- group_list: Get all groups
-- tag_list: Get all tags
-- resource_show: Get resource details
-- site_read: Get site information
-- status_show: Get site status
-
-Authentication: Optional CKAN_API_KEY for reading protected data; tools are read-only
-
-Full documentation: https://docs.ckan.org/en/latest/api/
-    """
-
-
 @mcp.resource("ckan://config")
 def get_config() -> str:
     """Current CKAN server configuration and connection details"""
