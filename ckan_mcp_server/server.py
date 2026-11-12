@@ -88,18 +88,23 @@ def optional_tool(fn):
 # --- Response helpers ---
 
 
-def _summarize_package(pkg: dict[str, Any], include_resources: bool = True) -> dict[str, Any]:
+def _summarize_package(
+    pkg: dict[str, Any], include_resources: bool = True, notes_chars: int | None = None
+) -> dict[str, Any]:
     """Trim a raw CKAN package dict down to the fields an agent usually needs.
 
     The raw payload includes large, rarely-useful blobs (extras, tracking, full
     resource metadata for every file) that bloat the model's context. Callers can
     request the untrimmed object via the tool's `full=True` argument.
     """
+    notes = pkg.get("notes")
+    if notes_chars is not None and notes and len(notes) > notes_chars:
+        notes = notes[:notes_chars] + "..."
     summary: dict[str, Any] = {
         "id": pkg.get("id"),
         "name": pkg.get("name"),
         "title": pkg.get("title"),
-        "notes": pkg.get("notes"),
+        "notes": notes,
         "information_url": pkg.get("information_url"),
         "organization": (pkg.get("organization") or {}).get("title"),
         "tags": [t.get("name") for t in pkg.get("tags", [])],
@@ -119,6 +124,18 @@ def _summarize_package(pkg: dict[str, Any], include_resources: bool = True) -> d
             for r in pkg.get("resources", [])
         ]
     return summary
+
+
+def _compact_datastore_result(result: dict[str, Any]) -> dict[str, Any]:
+    """Drop pagination links and per-column metadata from a DataStore row result.
+
+    Column descriptions are available from ckan_dataset_schema; repeating them in
+    every row result costs thousands of tokens.
+    """
+    compact = {k: v for k, v in result.items() if k != "_links"}
+    if isinstance(compact.get("fields"), list):
+        compact["fields"] = [{"id": f.get("id"), "type": f.get("type")} for f in compact["fields"]]
+    return compact
 
 
 # --- Tools ---
@@ -156,7 +173,8 @@ async def ckan_package_search(
     """Search for packages using queries.
 
     Returns `{count, results}` with trimmed package summaries by default; pass
-    `full=True` for the raw CKAN response.
+    `full=True` for the raw CKAN response. Notes are shortened to 300 characters;
+    use ckan_package_show for the full text.
     """
     client = await get_client()
     params = {"q": q, "fq": fq, "sort": sort, "rows": rows, "start": start}
@@ -166,7 +184,8 @@ async def ckan_package_search(
     return {
         "count": result.get("count"),
         "results": [
-            _summarize_package(pkg, include_resources=False) for pkg in result.get("results", [])
+            _summarize_package(pkg, include_resources=False, notes_chars=SEARCH_NOTES_CHARS)
+            for pkg in result.get("results", [])
         ],
     }
 
@@ -259,7 +278,9 @@ async def ckan_datastore_search(
     }
     # Remove None values so optional params are omitted.
     data = {k: v for k, v in data.items() if v is not None}
-    return await client._make_request("POST", "datastore_search", data=data)
+    return _compact_datastore_result(
+        await client._make_request("POST", "datastore_search", data=data)
+    )
 
 
 # --- Data Analysis Tools ---
@@ -273,8 +294,10 @@ async def ckan_resource_preview(resource_id: str, rows: int = 5) -> dict[str, An
     """
     client = await get_client()
     try:
-        return await client._make_request(
-            "POST", "datastore_search", data={"resource_id": resource_id, "limit": rows}
+        return _compact_datastore_result(
+            await client._make_request(
+                "POST", "datastore_search", data={"resource_id": resource_id, "limit": rows}
+            )
         )
     except ToolError:
         # DataStore not active for this resource; return its metadata instead.

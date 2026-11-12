@@ -388,3 +388,59 @@ async def test_datastore_search_keeps_explicit_zero_limit():
         await server.ckan_datastore_search(resource_id="r", limit=0)
     request = next(iter(mocked.requests.values()))[0]
     assert request.kwargs["json"] == {"resource_id": "r", "limit": 0}
+
+
+RAW_ROWS = {
+    "resource_id": "r",
+    "total": 1,
+    "records": [{"_id": 1, "A": None}],
+    "fields": [
+        {"id": "_id", "type": "int"},
+        {"id": "A", "type": "text", "info": {"notes": "long description"}},
+    ],
+    "_links": {"start": "/x", "next": "/y"},
+}
+COMPACT_ROWS = {
+    "resource_id": "r",
+    "total": 1,
+    "records": [{"_id": 1, "A": None}],
+    "fields": [{"id": "_id", "type": "int"}, {"id": "A", "type": "text"}],
+}
+
+
+def test_compact_datastore_result_keeps_rows_and_drops_field_info():
+    assert server._compact_datastore_result(RAW_ROWS) == COMPACT_ROWS
+
+
+def test_compact_datastore_result_accepts_missing_fields():
+    assert server._compact_datastore_result({"records": []}) == {"records": []}
+
+
+async def test_row_tools_return_compact_results():
+    with aioresponses() as m:
+        m.post(
+            action_url("datastore_search"),
+            payload={"success": True, "result": RAW_ROWS},
+            repeat=True,
+        )
+        assert await server.ckan_datastore_search(resource_id="r", limit=1) == COMPACT_ROWS
+        assert await server.ckan_resource_preview(resource_id="r") == COMPACT_ROWS
+
+
+async def test_package_search_truncates_long_notes():
+    pkg = {**SAMPLE_PACKAGE, "notes": "n" * 1000}
+    with aioresponses() as m:
+        m.get(
+            action_re("package_search"),
+            payload={"success": True, "result": {"count": 1, "results": [pkg]}},
+        )
+        result = await server.ckan_package_search(q="x")
+    assert result["results"][0]["notes"] == "n" * 300 + "..."
+
+
+async def test_package_show_keeps_full_notes():
+    pkg = {**SAMPLE_PACKAGE, "notes": "n" * 1000}
+    with aioresponses() as m:
+        m.get(action_re("package_show"), payload={"success": True, "result": pkg})
+        result = await server.ckan_package_show(id="abc-123")
+    assert result["notes"] == "n" * 1000
