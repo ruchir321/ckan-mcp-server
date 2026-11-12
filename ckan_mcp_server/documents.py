@@ -14,12 +14,13 @@ import asyncio
 import io
 import ipaddress
 import logging
+import math
 import os
 import re
 import socket
 import ssl
 import time
-from collections import deque
+from collections import Counter, deque
 from dataclasses import dataclass
 from urllib.parse import urljoin, urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
@@ -29,7 +30,6 @@ import certifi
 import markdownify
 from bs4 import BeautifulSoup
 from pypdf import PdfReader
-from rank_bm25 import BM25Okapi
 
 logger = logging.getLogger("mcp-ckan-server.scraper")
 
@@ -573,6 +573,28 @@ def split_sections(page: Page) -> list[Section]:
     return sections
 
 
+def _bm25_scores(
+    corpus: list[list[str]],
+    query: list[str],
+    k1: float = 1.5,
+    b: float = 0.75,
+    epsilon: float = 0.25,
+) -> list[float]:
+    """BM25 Okapi scores, matching rank_bm25.BM25Okapi 0.2.2."""
+    n_docs = len(corpus)
+    avgdl = sum(len(d) for d in corpus) / n_docs
+    freqs = [Counter(d) for d in corpus]
+    df = Counter(t for f in freqs for t in f)
+    idf = {t: math.log(n_docs - n + 0.5) - math.log(n + 0.5) for t, n in df.items()}
+    floor = epsilon * (sum(idf.values()) / len(idf))
+    idf = {t: (floor if v < 0 else v) for t, v in idf.items()}
+    scores = []
+    for d, f in zip(corpus, freqs, strict=True):
+        norm = k1 * (1 - b + b * len(d) / avgdl)
+        scores.append(sum(idf.get(t, 0.0) * f[t] * (k1 + 1) / (f[t] + norm) for t in query))
+    return scores
+
+
 def rank_sections(pages: list[Page], query: str, k: int = 5) -> list[Section]:
     """Return the top-k sections most relevant to `query` via BM25 (score > 0)."""
     q_tokens = _tokenize(query)
@@ -590,8 +612,7 @@ def rank_sections(pages: list[Page], query: str, k: int = 5) -> list[Section]:
     if not tokenized:
         return []
     sections, corpus = zip(*tokenized, strict=True)
-    bm25 = BM25Okapi(corpus)
-    scores = list(bm25.get_scores(q_tokens))
+    scores = _bm25_scores(list(corpus), q_tokens)
 
     # BM25's IDF goes to zero on tiny corpora (a term present in most/all docs),
     # which would wrongly drop everything for a single short page. Fall back to a
