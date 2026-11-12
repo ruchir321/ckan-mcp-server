@@ -11,6 +11,7 @@ from conftest import action_re, action_url
 from fastmcp import Client
 from fastmcp.exceptions import ToolError
 
+from ckan_mcp_server import client as ckan_client
 from ckan_mcp_server import server
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -112,6 +113,11 @@ async def test_api_error_preserves_ckan_message_on_http_error(status):
             await server.ckan_package_show(id="missing")
 
 
+@pytest.fixture
+def no_backoff(monkeypatch):
+    monkeypatch.setattr(ckan_client, "RETRY_BACKOFF", (0, 0))
+
+
 @pytest.mark.parametrize(
     "status,body,content_type,message",
     [
@@ -124,9 +130,17 @@ async def test_api_error_preserves_ckan_message_on_http_error(status):
         (503, '{"success": true, "result": {}}', "application/json", "HTTP error 503"),
     ],
 )
-async def test_unexpected_response_is_a_useful_tool_error(status, body, content_type, message):
+async def test_unexpected_response_is_a_useful_tool_error(
+    status, body, content_type, message, no_backoff
+):
     with aioresponses() as mocked:
-        mocked.get(action_url("status_show"), status=status, body=body, content_type=content_type)
+        mocked.get(
+            action_url("status_show"),
+            status=status,
+            body=body,
+            content_type=content_type,
+            repeat=True,
+        )
         with pytest.raises(ToolError, match=message):
             await server.ckan_status_show()
 
@@ -444,3 +458,38 @@ async def test_package_show_keeps_full_notes():
         m.get(action_re("package_show"), payload={"success": True, "result": pkg})
         result = await server.ckan_package_show(id="abc-123")
     assert result["notes"] == "n" * 1000
+
+
+async def test_transient_503_is_retried(no_backoff):
+    with aioresponses() as mocked:
+        mocked.get(action_url("status_show"), status=503, body="busy", content_type="text/plain")
+        mocked.get(action_url("status_show"), payload={"success": True, "result": {"ok": 1}})
+        assert await server.ckan_status_show() == {"ok": 1}
+    assert len(next(iter(mocked.requests.values()))) == 2
+
+
+async def test_retries_stop_after_the_budget(no_backoff):
+    with aioresponses() as mocked:
+        mocked.get(
+            action_url("status_show"),
+            status=503,
+            body="busy",
+            content_type="text/plain",
+            repeat=True,
+        )
+        with pytest.raises(ToolError, match="503"):
+            await server.ckan_status_show()
+    assert len(next(iter(mocked.requests.values()))) == 3
+
+
+async def test_ckan_404_is_not_retried(no_backoff):
+    with aioresponses() as mocked:
+        mocked.get(
+            action_re("package_show"),
+            status=404,
+            repeat=True,
+            payload={"success": False, "error": {"message": "Dataset not found"}},
+        )
+        with pytest.raises(ToolError, match="Dataset not found"):
+            await server.ckan_package_show(id="missing")
+    assert len(next(iter(mocked.requests.values()))) == 1

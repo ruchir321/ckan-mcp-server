@@ -1,5 +1,6 @@
 """Async client for the CKAN action API."""
 
+import asyncio
 import logging
 import ssl
 from typing import Any
@@ -10,6 +11,8 @@ import certifi
 from fastmcp.exceptions import ToolError
 
 DEFAULT_TIMEOUT = 30
+RETRY_STATUSES = {429, 502, 503, 504}
+RETRY_BACKOFF = (0.5, 1.0)  # seconds; its length is the retry count
 
 logger = logging.getLogger("mcp-ckan-server.client")
 
@@ -110,34 +113,45 @@ class CKANAPIClient:
                 if value is not None
             }
 
-        try:
-            assert self.session is not None
-            async with self.session.request(
-                method,
-                url,
-                headers=self._get_headers(),
-                json=data,
-                params=params,
-                auth=auth,
-            ) as response:
-                status = response.status
-                try:
-                    result = await response.json()
-                except (ValueError, aiohttp.ContentTypeError) as exc:
-                    raise ToolError(
-                        f"CKAN returned a non-JSON response (HTTP {status}): {endpoint}"
-                    ) from exc
-                # CKAN can return useful API errors with either HTTP 200 or 4xx.
-                if status >= 400 and not (
-                    isinstance(result, dict) and result.get("success") is False
-                ):
-                    raise ToolError(f"CKAN HTTP error {status}: {endpoint}")
-        except TimeoutError as exc:
-            raise ToolError(
-                f"CKAN request timed out after {self.timeout.total}s: {endpoint}"
-            ) from exc
-        except aiohttp.ClientError as exc:
-            raise ToolError(f"Failed to reach configured CKAN endpoint: {exc}") from exc
+        for attempt in range(len(RETRY_BACKOFF) + 1):
+            has_retry = attempt < len(RETRY_BACKOFF)
+            try:
+                assert self.session is not None
+                async with self.session.request(
+                    method,
+                    url,
+                    headers=self._get_headers(),
+                    json=data,
+                    params=params,
+                    auth=auth,
+                ) as response:
+                    status = response.status
+                    if has_retry and status in RETRY_STATUSES:
+                        logger.info("Retrying %s after HTTP %s", endpoint, status)
+                    else:
+                        try:
+                            result = await response.json()
+                        except (ValueError, aiohttp.ContentTypeError) as exc:
+                            raise ToolError(
+                                f"CKAN returned a non-JSON response (HTTP {status}): {endpoint}"
+                            ) from exc
+                        # CKAN can return useful API errors with either HTTP 200 or 4xx.
+                        if status >= 400 and not (
+                            isinstance(result, dict) and result.get("success") is False
+                        ):
+                            raise ToolError(f"CKAN HTTP error {status}: {endpoint}")
+                        break
+            except TimeoutError as exc:
+                raise ToolError(
+                    f"CKAN request timed out after {self.timeout.total}s: {endpoint}"
+                ) from exc
+            except aiohttp.ClientConnectionError as exc:
+                if not has_retry:
+                    raise ToolError(f"Failed to reach configured CKAN endpoint: {exc}") from exc
+                logger.info("Retrying %s after connection error: %s", endpoint, exc)
+            except aiohttp.ClientError as exc:
+                raise ToolError(f"Failed to reach configured CKAN endpoint: {exc}") from exc
+            await asyncio.sleep(RETRY_BACKOFF[attempt])
 
         if not isinstance(result, dict) or not isinstance(result.get("success"), bool):
             raise ToolError(f"CKAN returned an invalid response envelope: {endpoint}")
