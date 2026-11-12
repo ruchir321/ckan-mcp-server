@@ -424,19 +424,23 @@ async def crawl(
             fetched.add(final_url)
             seen.add(final_url)
 
-            if ctype == "pdf":
-                pages.append(Page(final_url, _title_from_url(final_url), pdf_to_text(body), "pdf"))
-            else:
-                md = html_to_markdown(body)
-                pages.append(
-                    Page(final_url, _first_heading(md) or _title_from_url(final_url), md, "html")
-                )
-                if depth < max_depth:
-                    for link in extract_links(body, final_url):
-                        c = canonicalize(link)
-                        if c not in seen and _in_any_scope(c, prefixes):
-                            seen.add(c)
-                            queue.append((c, depth + 1))
+            try:
+                if ctype == "pdf":
+                    page = Page(final_url, _title_from_url(final_url), pdf_to_text(body), "pdf")
+                else:
+                    md = html_to_markdown(body)
+                    title = _first_heading(md) or _title_from_url(final_url)
+                    page = Page(final_url, title, md, "html")
+            except Exception as e:
+                logger.warning("Failed to extract %s: %s", final_url, e)
+                continue
+            pages.append(page)
+            if page.content_type == "html" and depth < max_depth:
+                for link in extract_links(body, final_url):
+                    c = canonicalize(link)
+                    if c not in seen and _in_any_scope(c, prefixes):
+                        seen.add(c)
+                        queue.append((c, depth + 1))
 
             if delay:
                 await asyncio.sleep(delay)

@@ -345,3 +345,16 @@ async def test_crawl_drops_child_redirected_out_of_scope():
         m.get("https://site.test/z/", body="<p>unrelated</p>", content_type="text/html")
         pages = await ds.crawl([seed], obey_robots=False, delay=0, max_depth=2)
     assert [p.url for p in pages] == [seed]
+
+
+async def test_crawl_skips_unparseable_pdf_and_keeps_other_pages():
+    seed = "https://site.test/a/"
+    with aioresponses() as m:
+        m.get(seed, body='<h1>A</h1><a href="/a/bad.pdf">x</a>', content_type="text/html")
+        m.get(
+            "https://site.test/a/bad.pdf",
+            body=b"%PDF-not really",
+            content_type="application/pdf",
+        )
+        pages = await ds.crawl([seed], obey_robots=False, delay=0, max_depth=2)
+    assert [p.url for p in pages] == [seed]
