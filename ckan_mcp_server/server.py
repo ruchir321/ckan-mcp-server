@@ -20,6 +20,7 @@ CKAN_URL = os.getenv("CKAN_URL")
 
 # Max characters returned by ckan_read_web_document to avoid context overflow.
 MAX_DOCUMENT_CHARS = 30000
+MAX_DOCS_RESPONSE_CHARS = 60000
 
 
 # --- Shared client lifecycle ---
@@ -371,17 +372,39 @@ async def ckan_fetch_dataset_docs(
 
     Returns each page as Markdown with its source URL, for grounded, citable
     reading. Use this for legal/bylaw follow-up questions instead of guessing.
+    Output is capped at 60000 characters in total; use ckan_search_dataset_docs
+    for specific passages.
     """
     seeds = await _dataset_doc_seeds(dataset_id)
     pages = await documents.gather_dataset_pages(seeds, max_pages=max_pages)
-    return {
+    remaining = MAX_DOCS_RESPONSE_CHARS
+    out_pages = []
+    for p in pages:
+        take = min(len(p.text), MAX_DOCUMENT_CHARS, remaining)
+        remaining -= take
+        out_pages.append(
+            {
+                "url": p.url,
+                "title": p.title,
+                "content_type": p.content_type,
+                "text": p.text[:take],
+                "total_chars": len(p.text),
+                "truncated": take < len(p.text),
+            }
+        )
+    truncated = any(p["truncated"] for p in out_pages)
+    result: dict[str, Any] = {
         "dataset_id": dataset_id,
         "seed_urls": seeds,
-        "pages": [
-            {"url": p.url, "title": p.title, "content_type": p.content_type, "text": p.text}
-            for p in pages
-        ],
+        "pages": out_pages,
+        "truncated": truncated,
     }
+    if truncated:
+        result["note"] = (
+            f"Output capped at {MAX_DOCS_RESPONSE_CHARS} characters. "
+            "Use ckan_search_dataset_docs(dataset_id, query) for specific passages."
+        )
+    return result
 
 
 @mcp.tool(annotations=READ_ONLY_ANNOTATIONS)
