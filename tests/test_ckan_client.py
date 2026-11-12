@@ -493,3 +493,17 @@ async def test_ckan_404_is_not_retried(no_backoff):
         with pytest.raises(ToolError, match="Dataset not found"):
             await server.ckan_package_show(id="missing")
     assert len(next(iter(mocked.requests.values()))) == 1
+
+
+async def test_initialize_returns_workflow_instructions():
+    async with Client(server.mcp) as client:
+        text = client.initialize_result.instructions
+    for name in (
+        "ckan_package_search",
+        "ckan_dataset_schema",
+        "ckan_datastore_search",
+        "ckan_search_dataset_docs",
+    ):
+        assert name in text
+    assert "untrusted" in text
+    assert len(text) <= 1200
