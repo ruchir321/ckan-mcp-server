@@ -360,12 +360,12 @@ async def _allowed(session: aiohttp.ClientSession, url: str, cache: dict) -> boo
     return rp.can_fetch(USER_AGENT, url)
 
 
-async def fetch_document(session: aiohttp.ClientSession, url: str) -> tuple[str, object]:
-    """Fetch a URL, returning ("html", text) or ("pdf", bytes)."""
+async def fetch_document(session: aiohttp.ClientSession, url: str) -> tuple[str, str, str | bytes]:
+    """Fetch a URL, returning (final_url, "html", text) or (final_url, "pdf", bytes)."""
     final_url, content_type, body = await _request_with_redirects(session, url)
     if "pdf" in content_type or final_url.lower().endswith(".pdf"):
-        return "pdf", body
-    return "html", body.decode("utf-8", errors="replace")
+        return final_url, "pdf", body
+    return final_url, "html", body.decode("utf-8", errors="replace")
 
 
 async def crawl(
@@ -390,6 +390,7 @@ async def crawl(
     robots_cache: dict = {}
     queue: deque = deque((canonicalize(u), 0) for u in seed_urls)
     seen = {url for url, _ in queue}
+    fetched: set[str] = set()
 
     try:
         while queue and len(pages) < max_pages:
@@ -401,18 +402,37 @@ async def crawl(
                 logger.info("robots.txt disallows %s", url)
                 continue
             try:
-                ctype, body = await fetch_document(session, url)
+                final_url, ctype, body = await fetch_document(session, url)
             except Exception as e:
                 logger.warning("Failed to fetch %s: %s", url, e)
                 continue
 
+            final_url = canonicalize(final_url)
+            if final_url != url:
+                if depth == 0:
+                    prefix = _scope_prefix(final_url)
+                    if prefix not in prefixes:
+                        prefixes.append(prefix)
+                elif not _in_any_scope(final_url, prefixes):
+                    logger.info("Dropping %s: redirected out of scope to %s", url, final_url)
+                    continue
+                if obey_robots and not await _allowed(session, final_url, robots_cache):
+                    logger.info("robots.txt disallows %s", final_url)
+                    continue
+            if final_url in fetched:
+                continue
+            fetched.add(final_url)
+            seen.add(final_url)
+
             if ctype == "pdf":
-                pages.append(Page(url, _title_from_url(url), pdf_to_text(body), "pdf"))
+                pages.append(Page(final_url, _title_from_url(final_url), pdf_to_text(body), "pdf"))
             else:
                 md = html_to_markdown(body)
-                pages.append(Page(url, _first_heading(md) or _title_from_url(url), md, "html"))
+                pages.append(
+                    Page(final_url, _first_heading(md) or _title_from_url(final_url), md, "html")
+                )
                 if depth < max_depth:
-                    for link in extract_links(body, url):
+                    for link in extract_links(body, final_url):
                         c = canonicalize(link)
                         if c not in seen and _in_any_scope(c, prefixes):
                             seen.add(c)

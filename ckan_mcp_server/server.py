@@ -292,7 +292,7 @@ async def ckan_read_web_document(url: str, max_chars: int = MAX_DOCUMENT_CHARS) 
         )
     try:
         async with documents.create_safe_session() as session:
-            content_type, body = await documents.fetch_document(session, url)
+            _final_url, content_type, body = await documents.fetch_document(session, url)
         if content_type == "pdf":
             md = documents.pdf_to_text(body)
         else:

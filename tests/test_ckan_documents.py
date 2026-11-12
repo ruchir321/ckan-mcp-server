@@ -312,3 +312,36 @@ async def test_crawl_rejects_excessive_limits():
         await ds.crawl(["https://site.test/a/"], max_pages=ds.MAX_CRAWL_PAGES + 1)
     with pytest.raises(ds.DocumentLimitError, match="max_depth"):
         await ds.crawl(["https://site.test/a/"], max_depth=ds.MAX_CRAWL_DEPTH + 1)
+
+
+async def test_crawl_scope_follows_seed_redirect():
+    seed = "https://site.test/old/topic/"
+    moved = "https://site.test/new/topic/"
+    child = "https://site.test/new/topic/child/"
+    html = '<h1>Topic</h1><a href="/new/topic/child/">c</a><a href="/new/other/">o</a>'
+    with aioresponses() as m:
+        m.get(seed, status=301, headers={"Location": moved})
+        m.get(moved, body=html, content_type="text/html")
+        m.get(child, body="<p>child</p>", content_type="text/html")
+        pages = await ds.crawl([seed], obey_robots=False, delay=0, max_depth=2)
+    assert [p.url for p in pages] == [moved, child]
+
+
+async def test_crawl_dedups_pages_by_final_url():
+    a, b, final = "https://site.test/a/", "https://site.test/b/", "https://site.test/c/"
+    with aioresponses() as m:
+        m.get(a, status=302, headers={"Location": final})
+        m.get(b, status=302, headers={"Location": final})
+        m.get(final, body="<p>same</p>", content_type="text/html", repeat=True)
+        pages = await ds.crawl([a, b], obey_robots=False, delay=0)
+    assert [p.url for p in pages] == [final]
+
+
+async def test_crawl_drops_child_redirected_out_of_scope():
+    seed = "https://site.test/a/"
+    with aioresponses() as m:
+        m.get(seed, body='<a href="/a/moved">m</a>', content_type="text/html")
+        m.get("https://site.test/a/moved", status=302, headers={"Location": "https://site.test/z/"})
+        m.get("https://site.test/z/", body="<p>unrelated</p>", content_type="text/html")
+        pages = await ds.crawl([seed], obey_robots=False, delay=0, max_depth=2)
+    assert [p.url for p in pages] == [seed]
