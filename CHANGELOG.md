@@ -1,6 +1,10 @@
 # CHANGELOG
 
-2026-11-11 - unreleased crawler and result-size work
+2026-11-12 - v1.3.0
+
+* Includes the 2026-09-30 and 2026-06-21 unreleased changes below.
+* DOC: Stop tracking `docs/product_design.md` and `docs/requests/rentsafe-relevant-dataset.md`, which match the ignored `docs/*` rule
+
 
 * FIX: Document crawl scope follows redirects; pages are reported and deduplicated by final URL, and a child page that redirects out of scope is dropped
 * FIX: A document that fails extraction (for example a corrupt PDF) is skipped instead of aborting the crawl
@@ -19,7 +23,7 @@
 * RMV: Stale `ckan://api/docs` resource, legacy test helpers and the `python_files` collection allowlist
 * DOC: Trimmed `.gitignore`; removed the dependency maintenance table from the README (see the 2026-09-30 entry)
 
-2026-09-30 - unreleased maintenance
+2026-09-30 - maintenance (released in v1.3.0)
 
 * Update aiohttp, certifi, FastMCP 3.x and pypdf within supported dependency ranges.
 * Advertise read-only MCP annotations while preserving the eight default tools.
@@ -28,7 +32,7 @@
 * Handle empty document vocabularies and nonpositive retrieval limits without ranking failures.
 * Add offline regression and MCP/HTTP protocol coverage; document transport behavior, dependency decisions and the Plugin Creator route.
 
-2026-06-21 - unreleased
+2026-06-21 - changes (released in v1.3.0)
 
 * FIX: Packaging — include `document_scraper` in the built distribution (the server imports it; it was previously omitted from `py-modules`)
 * RMV: Delete `tests/test.py` (stale OpenAI Agents SDK scaffold) and the `openai-agents` dependency

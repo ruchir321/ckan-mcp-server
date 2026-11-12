@@ -1,6 +1,6 @@
 [project]
 name = "ckan-mcp-server"
-version = "1.2.0"
+version = "1.3.0"
 description = "A read-only Model Context Protocol (MCP) server for discovering and querying CKAN data portals."
 readme = "README.md"
 requires-python = ">=3.13"
