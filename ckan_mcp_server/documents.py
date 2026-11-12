@@ -161,7 +161,7 @@ def _title_from_url(url: str) -> str:
 
 # --- URL discovery & scoping ---
 
-_MD_LINK_RE = re.compile(r"\]\((https?://[^)\s]+)\)")
+_URL_RE = re.compile(r"https?://[^\s<>\"')\]]+")
 
 
 def discover_doc_urls(package: dict) -> list[str]:
@@ -171,7 +171,7 @@ def discover_doc_urls(package: dict) -> list[str]:
     if info_url:
         urls.append(info_url)
     notes = package.get("notes") or ""
-    urls.extend(_MD_LINK_RE.findall(notes))
+    urls.extend(u.rstrip(".,;:") for u in _URL_RE.findall(notes))
 
     seen, ordered = set(), []
     for u in urls:

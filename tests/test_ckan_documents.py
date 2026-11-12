@@ -401,3 +401,8 @@ async def test_crawl_skips_non_document_content_types():
         m.get("https://site.test/a/photo.jpg", body=b"\x00\x01" * 100, content_type="image/jpeg")
         pages = await ds.crawl([seed], obey_robots=False, delay=0, max_depth=2)
     assert [p.url for p in pages] == [seed]
+
+
+def test_discover_doc_urls_finds_bare_urls_and_strips_punctuation():
+    pkg = {"notes": "Details at https://x.test/a/info. See also (https://x.test/b)."}
+    assert ds.discover_doc_urls(pkg) == ["https://x.test/a/info", "https://x.test/b"]
