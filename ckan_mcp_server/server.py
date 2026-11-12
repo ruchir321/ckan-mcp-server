@@ -1,5 +1,6 @@
 """FastMCP tool surface and process lifecycle."""
 
+import asyncio
 import json
 import logging
 import os
@@ -314,7 +315,7 @@ async def ckan_read_web_document(url: str, max_chars: int = MAX_DOCUMENT_CHARS) 
     Outbound requests pass an SSRF guard (`documents.is_safe_url`): only public
     http(s) hosts are fetched. Set CKAN_DOC_ALLOWED_HOSTS to restrict to an allowlist.
     """
-    if not documents.is_safe_url(url):
+    if not await asyncio.to_thread(documents.is_safe_url, url):
         return (
             "Refused to fetch this URL: it does not resolve to a public http(s) address "
             "(SSRF guard). CKAN_DOC_ALLOWED_HOSTS can further restrict public hosts."
@@ -323,9 +324,9 @@ async def ckan_read_web_document(url: str, max_chars: int = MAX_DOCUMENT_CHARS) 
         async with documents.create_safe_session() as session:
             _final_url, content_type, body = await documents.fetch_document(session, url)
         if content_type == "pdf":
-            md = documents.pdf_to_text(body)
+            md = await asyncio.to_thread(documents.pdf_to_text, body)
         else:
-            md = documents.html_to_markdown(body)
+            md = await asyncio.to_thread(documents.html_to_markdown, body)
     except Exception as exc:
         return f"Failed to fetch or parse the document: {exc}"
 

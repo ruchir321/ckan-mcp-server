@@ -328,7 +328,7 @@ async def _request_with_redirects(
     """GET a public URL, revalidating every redirect target before following it."""
     current = canonicalize(url)
     for redirect_count in range(MAX_REDIRECTS + 1):
-        if not is_safe_url(current):
+        if not await asyncio.to_thread(is_safe_url, current):
             raise DocumentSecurityError("URL does not resolve to an allowed public http(s) address")
         async with session.get(
             current,
@@ -362,7 +362,7 @@ async def _allowed(session: aiohttp.ClientSession, url: str, cache: dict) -> boo
         rp = RobotFileParser()
         robots_url = f"{p.scheme}://{p.netloc}/robots.txt"
         try:
-            if not is_safe_url(robots_url):
+            if not await asyncio.to_thread(is_safe_url, robots_url):
                 raise DocumentSecurityError("unsafe robots URL")
             async with session.get(
                 robots_url,
@@ -417,7 +417,7 @@ async def crawl(
     try:
         while queue and len(pages) < max_pages:
             url, depth = queue.popleft()
-            if not is_safe_url(url):
+            if not await asyncio.to_thread(is_safe_url, url):
                 logger.warning("SSRF guard: skipping non-public URL %s", url)
                 continue
             if obey_robots and not await _allowed(session, url, robots_cache):
@@ -448,9 +448,14 @@ async def crawl(
 
             try:
                 if ctype == "pdf":
-                    page = Page(final_url, _title_from_url(final_url), pdf_to_text(body), "pdf")
+                    page = Page(
+                        final_url,
+                        _title_from_url(final_url),
+                        await asyncio.to_thread(pdf_to_text, body),
+                        "pdf",
+                    )
                 else:
-                    md = html_to_markdown(body)
+                    md = await asyncio.to_thread(html_to_markdown, body)
                     title = _first_heading(md) or _title_from_url(final_url)
                     page = Page(final_url, title, md, "html")
             except Exception as e:
